@@ -1,0 +1,23 @@
+{
+  "name": "lumina-card",
+  "version": "0.1.0",
+  "description": "Carte Home Assistant pour piloter une pièce gérée par Lumina",
+  "type": "module",
+  "license": "MIT",
+  "author": "phabrys",
+  "repository": "github:phabrys/lumina-card",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node scripts/build.mjs && node --test test/*.test.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  }
+}

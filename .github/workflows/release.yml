@@ -1,0 +1,40 @@
+name: Release
+
+# Publie la release quand la CI réussit sur main et que la version de
+# package.json n'a pas encore de release. Le fichier de la carte est joint.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Lire la version
+        id: version
+        run: echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Publier la release si elle n'existe pas
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "La release v$VERSION existe déjà."
+            exit 0
+          fi
+          awk -v v="$VERSION" '$0 ~ "^## "v {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
+          printf '\n**Mise à jour :** HACS → Lumina Card → Mettre à jour, puis recharger la page.\n' >> notes.md
+          gh release create "v$VERSION" dist/lumina-card.js --target "$TARGET" --title "Lumina Card $VERSION" --notes-file notes.md

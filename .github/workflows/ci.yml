@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Build et tests
+        run: npm test
+      - name: dist/ à jour
+        run: |
+          if ! git diff --quiet -- dist; then
+            echo "::error title=dist::dist/lumina-card.js ne correspond pas aux sources : lancer npm run build et committer."
+            git diff --stat -- dist
+            exit 1
+          fi
+
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: plugin
+          # Critères requis seulement pour le store HACS par défaut
+          ignore: brands description topics
