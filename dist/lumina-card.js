@@ -1,4 +1,4 @@
-/*! Lumina Card 0.2.0 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.2.1 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -167,12 +167,12 @@ const fr = {
     o_all_m: "Tous",
     o_any_m: "Si aucun allumé",
     s_climate_vacant_day: "En pièce vide, le jour",
-    h_climate_vacant: "+2 °C : consigne relevée (abaissée en chauffage)",
+    h_climate_vacant: "Modérer : consigne relevée de 2 °C (abaissée en chauffage)",
     s_climate_vacant_night: "En pièce vide, la nuit",
     h_climate_vacant_night: "Un détecteur peut ne pas voir un dormeur",
     o_climate_off: "Éteindre",
     o_climate_eco: "Eco",
-    o_climate_setback: "+2 °C",
+    o_climate_setback: "Modérer",
     o_climate_none: "Rien",
     s_climate_vacant_delay: "Délai avant d'agir",
     h_climate_vacant_delay: "Rétablie si quelqu'un revient dans les 2 h",
@@ -331,12 +331,12 @@ const en = {
     o_all_m: "All",
     o_any_m: "If none is on",
     s_climate_vacant_day: "Empty room, by day",
-    h_climate_vacant: "+2 °C: setpoint raised (lowered when heating)",
+    h_climate_vacant: "Ease off: setpoint raised by 2 °C (lowered when heating)",
     s_climate_vacant_night: "Empty room, at night",
     h_climate_vacant_night: "A sensor may miss someone asleep",
     o_climate_off: "Turn off",
     o_climate_eco: "Eco",
-    o_climate_setback: "+2 °C",
+    o_climate_setback: "Ease off",
     o_climate_none: "Nothing",
     s_climate_vacant_delay: "Delay before acting",
     h_climate_vacant_delay: "Restored if someone returns within 2 h",
@@ -2132,5 +2132,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.2.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.2.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }
