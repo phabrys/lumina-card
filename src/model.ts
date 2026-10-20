@@ -45,12 +45,13 @@ export interface CardConfig {
 
 /** Clés de traduction des entités Lumina, telles que définies par l'intégration. */
 export type LuminaKey =
-  | "room_state" | "apparent_temperature" | "auto_lights" | "auto_fans" | "forced_night"
-  | "resume" | "lights_mode" | "night_start" | "night_end"
+  | "room_state" | "apparent_temperature" | "auto_lights" | "auto_fans" | "auto_climate" | "forced_night"
+  | "resume" | "lights_mode" | "fans_mode" | "night_start" | "night_end" | "night_override_until_morning"
   | "lux_threshold" | "day_brightness" | "night_brightness" | "day_color_temp" | "night_color_temp"
   | "light_off_delay" | "night_light_off_delay" | "light_warning_duration" | "daylight_off_lux"
   | "temperature_threshold" | "night_temperature_threshold" | "fan_min_speed" | "fan_speed_range"
-  | "fan_off_delay" | "night_fan_off_delay" | "vacancy_confirmation" | "override_duration";
+  | "fan_off_delay" | "night_fan_off_delay" | "vacancy_confirmation" | "override_duration"
+  | "climate_vacant_day" | "climate_vacant_night" | "climate_vacant_delay" | "fans_with_climate" | "fan_mix_speed";
 
 export type RoomEntities = Partial<Record<LuminaKey, string>>;
 
@@ -105,8 +106,17 @@ export interface NowLine {
 
 export type AutoState = "auto" | "manual" | "paused";
 
+export type PaneKind = "lights" | "fans" | "climate";
+
+export interface Setpoint {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+}
+
 export interface Pane {
-  kind: "lights" | "fans";
+  kind: PaneKind;
   title: string;
   entities: string[];
   on: boolean;
@@ -120,6 +130,9 @@ export interface Pane {
   autoEntity?: string;
   /** Durée d'un tour d'hélice (s) quand le ventilateur tourne. */
   spin?: number;
+  /** Clim : mode en cours (teinte du panneau) et consigne réglable. */
+  mode?: string;
+  setpoint?: Setpoint;
 }
 
 export interface AmbientItem {
@@ -146,7 +159,12 @@ export interface RoomView {
 export interface Pending {
   lights?: number;
   fans?: number;
+  /** Consigne de la clim en cours de réglage. */
+  climate?: number;
 }
+
+/** États d'une clim qui ne la comptent pas comme allumée. */
+const CLIMATE_OFF = new Set(["off", "unavailable", "unknown"]);
 
 const HOLD_INACTIVE = new Set(["off", "idle", "standby", "paused", "unavailable", "unknown", "not_home", "closed"]);
 
@@ -226,8 +244,10 @@ export function buildView(
   const occupied = roomState.state !== "vacant";
   const lightsIds: string[] = a.lights ?? [];
   const fansIds: string[] = a.fans ?? [];
+  const climateIds: string[] = a.climates ?? [];
   const lightsAuto = autoState(hass, room.auto_lights, a.lights_override_until);
   const fansAuto = autoState(hass, room.auto_fans, a.fans_override_until);
+  const climateAuto = autoState(hass, room.auto_climate, a.climate_override_until);
   const clock = (d: Date) => formatClock(d, language);
   const countdown = (d: Date) => formatCountdown(d.getTime() - now.getTime());
 
@@ -236,6 +256,8 @@ export function buildView(
   const vacancyAt = parseDate(a.vacancy_at);
   const lightsManualUntil = parseDate(a.lights_override_until);
   const fansManualUntil = parseDate(a.fans_override_until);
+  const climateManualUntil = parseDate(a.climate_override_until);
+  const climateAt = parseDate(a.climate_vacant_at);
   const forcedUntil = room.forced_night ? parseDate(hass.states[room.forced_night]?.attributes.until) : null;
   const forcedNight = isOn(hass, room.forced_night);
 
@@ -245,22 +267,49 @@ export function buildView(
 
   const hasLights = lightsIds.length > 0;
   const hasFans = fansIds.length > 0;
-  const lightsManual = hasLights && lightsAuto === "manual";
-  const fansManual = hasFans && fansAuto === "manual";
+  const hasClimate = climateIds.length > 0;
   const lightsPaused = hasLights && lightsAuto === "paused";
   const fansPaused = hasFans && fansAuto === "paused";
+  const climatePaused = hasClimate && climateAuto === "paused";
+  const groups = [
+    { has: hasLights, auto: lightsAuto, until: lightsManualUntil, word: t("w_lights") },
+    { has: hasFans, auto: fansAuto, until: fansManualUntil, word: t("w_fans") },
+    { has: hasClimate, auto: climateAuto, until: climateManualUntil, word: t("w_climate") },
+  ].filter((g) => g.has);
+  const manual = groups.filter((g) => g.auto === "manual");
+  const climateOn = climateIds.some((id) => isClimateOn(hass.states[id]));
+
+  // Échéances en pièce vide : extinctions, puis action sur la clim
+  const scheduled: { at: Date; text: (t: string) => string }[] = [];
+  if (lightsOffAt) scheduled.push({ at: lightsOffAt, text: (d) => t("lights_off_in", { t: d }) });
+  if (fansOffAt) scheduled.push({ at: fansOffAt, text: (d) => t("fans_off_in", { t: d }) });
+  const climateAction: string | undefined = a.climate_vacant_action;
+  if (climateAt && climateOn && climateAction && climateAction !== "none") {
+    const heating = climateIds.some((id) => hass.states[id]?.state === "heat");
+    const key: StringKey =
+      climateAction === "off" ? "climate_off_in"
+      : climateAction === "eco" ? "climate_eco_in"
+      : heating ? "climate_setback_heat_in" : "climate_setback_in";
+    scheduled.push({ at: climateAt, text: (d) => t(key, { t: d }) });
+  }
+  scheduled.sort((x, y) => x.at.getTime() - y.at.getTime());
 
   if (a.lights_warning && lightsOffAt) {
     line = { text: t("warning", { t: countdown(lightsOffAt) }), icon: "timer", tone: "countdown" };
     notes.push(t("note_warning"));
     ticking = true;
-  } else if (lightsManual || fansManual) {
-    const until = [lightsManual ? lightsManualUntil : null, fansManual ? fansManualUntil : null]
+  } else if (manual.length) {
+    const until = manual
+      .map((g) => g.until)
       .filter((d): d is Date => d !== null)
       .sort((x, y) => x.getTime() - y.getTime())[0];
-    const key: StringKey = lightsManual && fansManual ? "manual_both" : lightsManual ? "manual_lights" : "manual_fans";
+    const morning = night && isOn(hass, room.night_override_until_morning) && !!until
+      && isNightEnd(hass, room.night_end, until);
     line = {
-      text: t(key, { h: until ? clock(until) : "…" }),
+      text: t(morning ? "manual_morning" : "manual", {
+        what: joinWords(manual.map((g) => g.word), t("w_and")),
+        h: until ? clock(until) : "…",
+      }),
       icon: "hand",
       tone: "manual",
       action: room.resume ? { kind: "resume", label: t("resume") } : undefined,
@@ -268,17 +317,12 @@ export function buildView(
   } else if (a.vacancy_pending && vacancyAt) {
     line = { text: t("vacancy", { t: countdown(vacancyAt) }), icon: "timerOutline", tone: "countdown" };
     ticking = true;
-  } else if (!occupied && (lightsOffAt || fansOffAt)) {
-    const lightsFirst = lightsOffAt && (!fansOffAt || lightsOffAt <= fansOffAt);
-    if (lightsFirst && lightsOffAt) {
-      line = { text: t("lights_off_in", { t: countdown(lightsOffAt) }), icon: "timerOutline", tone: "countdown" };
-      if (fansOffAt) notes.push(t("fans_off_in", { t: countdown(fansOffAt) }));
-    } else {
-      line = { text: t("fans_off_in", { t: countdown(fansOffAt!) }), icon: "timerOutline", tone: "countdown" };
-      if (lightsOffAt) notes.push(t("lights_off_in", { t: countdown(lightsOffAt) }));
-    }
+  } else if (!occupied && scheduled.length) {
+    const [first, ...rest] = scheduled;
+    line = { text: first.text(countdown(first.at)), icon: "timerOutline", tone: "countdown" };
+    for (const next of rest) notes.push(next.text(countdown(next.at)));
     ticking = true;
-  } else if ((hasLights || hasFans) && (!hasLights || lightsPaused) && (!hasFans || fansPaused)) {
+  } else if (groups.length && groups.every((g) => g.auto === "paused")) {
     line = { text: t("paused"), icon: "pause", tone: "calm", action: { kind: "enable", label: t("enable") } };
   } else if (occupied && a.presence_hold_active && !(a.presence_sensors ?? []).some((e: string) => isOn(hass, e))) {
     const holder = (a.presence_hold_entities ?? []).find((e: string) => {
@@ -301,6 +345,11 @@ export function buildView(
   if (line.action?.kind !== "enable") {
     if (lightsPaused) notes.push(t("note_lights_paused"));
     if (fansPaused) notes.push(t("note_fans_paused"));
+    if (climatePaused) notes.push(t("note_climate_paused"));
+  }
+  const applied: string | null = hasClimate && !occupied ? a.climate_vacant_applied ?? null : null;
+  if (applied === "off" || applied === "eco" || applied === "setback") {
+    notes.push(t(applied === "off" ? "note_climate_off" : applied === "eco" ? "note_climate_eco" : "note_climate_setback"));
   }
   if (hasLights && a.daylight_locked) notes.push(t("note_daylight"));
   if (hasLights && night && !lightsPaused && num(hass, room.night_brightness) === 0) {
@@ -310,6 +359,7 @@ export function buildView(
   const panes: Pane[] = [];
   if (hasLights) panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, lightsManualUntil, night, language, clock, pending.lights));
   if (hasFans) panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, fansManualUntil, night, language, clock, pending.fans));
+  if (hasClimate) panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, climateManualUntil, night, clock, pending.climate));
 
   return {
     status: "ok",
@@ -323,6 +373,22 @@ export function buildView(
     ticking,
     entities: room,
   };
+}
+
+/** « lumière, ventilateur et clim », avec une majuscule initiale. */
+function joinWords(words: string[], and: string): string {
+  const text = words.length > 1 ? `${words.slice(0, -1).join(", ")} ${and} ${words[words.length - 1]}` : words[0] ?? "";
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** L'échéance tombe-t-elle à l'heure de fin de nuit ? (contrôle manuel « jusqu'au matin ») */
+function isNightEnd(hass: Hass, nightEnd: string | undefined, until: Date): boolean {
+  const [h, m] = (nightEnd ? hass.states[nightEnd]?.state ?? "" : "").split(":").map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) && until.getHours() === h && until.getMinutes() === m;
+}
+
+function isClimateOn(state: HassEntity | undefined): boolean {
+  return !!state && !CLIMATE_OFF.has(state.state);
 }
 
 function autoState(hass: Hass, autoEntity: string | undefined, overrideUntil: unknown): AutoState {
@@ -404,6 +470,10 @@ function fansPane(
   const threshold = num(hass, night ? room.night_temperature_threshold ?? room.temperature_threshold : room.temperature_threshold);
   if (auto === "paused") hint = t("hint_paused_fans");
   else if (auto === "manual") hint = t("hint_manual", { h: manualUntil ? clock(manualUntil) : "…" });
+  else if (a.climate_running && a.fans_with_climate === "mix") {
+    const speed = num(hass, room.fan_mix_speed);
+    hint = speed !== null ? t("hint_fans_mix", { v: formatNumber(speed, language) }) : t("hint_fans_mix_plain");
+  } else if (a.climate_running && a.fans_with_climate === "off") hint = t("hint_fans_climate_off");
   else if (on) {
     if (a.temperature_sensor && threshold !== null) {
       // Lumina arrête les ventilateurs 1 °C sous le seuil (hystérésis)
@@ -425,6 +495,59 @@ function fansPane(
 
   const step = Math.max(1, Number(states.find((s) => s?.attributes.percentage_step)?.attributes.percentage_step ?? 1));
   return { kind: "fans", title: t("fans"), entities: ids, on, level, step, value, hint, auto, autoEntity: room.auto_fans, spin };
+}
+
+function climatePane(
+  hass: Hass, room: RoomEntities, a: Record<string, any>, t: Translate, ids: string[],
+  auto: AutoState, manualUntil: Date | null, night: boolean,
+  clock: (d: Date) => string, pending: number | undefined,
+): Pane {
+  const states = ids.map((id) => hass.states[id]).filter((s): s is HassEntity => !!s);
+  const active = states.filter(isClimateOn);
+  const main = active[0] ?? states[0];
+  const on = active.length > 0;
+  const mode = on ? main.state : "off";
+
+  let value = t("off");
+  if (on) {
+    const hvac: Record<string, StringKey> = {
+      cool: "hvac_cool", heat: "hvac_heat", heat_cool: "hvac_auto", auto: "hvac_auto", dry: "hvac_dry", fan_only: "hvac_fan_only",
+    };
+    value = main.attributes.preset_mode === "eco" ? t("preset_eco") : hvac[mode] ? t(hvac[mode]) : t("on");
+    if (ids.length > 1) value += ` · ${t("of_total", { n: active.length, total: ids.length })}`;
+  }
+
+  // Consigne réglable seulement quand la clim tourne et en publie une
+  let setpoint: Setpoint | undefined;
+  const target = main?.attributes.temperature;
+  if (on && typeof target === "number") {
+    setpoint = {
+      value: pending ?? target,
+      min: Number(main.attributes.min_temp ?? 7),
+      max: Number(main.attributes.max_temp ?? 35),
+      step: Number(main.attributes.target_temp_step ?? 0.5),
+    };
+  }
+
+  let hint: string;
+  const action: string | undefined = a.climate_vacant_action;
+  const delay = num(hass, room.climate_vacant_delay);
+  if (auto === "paused") hint = t("hint_paused");
+  else if (auto === "manual") hint = t("hint_manual", { h: manualUntil ? clock(manualUntil) : "…" });
+  else if (a.climate_vacant_applied) hint = t("hint_climate_restore");
+  else if (!on) hint = t("hint_climate_never_on");
+  else if (!action || action === "none") hint = t(night ? "hint_climate_untouched_night" : "hint_climate_untouched");
+  else if (delay === null) hint = t("hint_auto_on");
+  else {
+    const key: StringKey =
+      action === "off" ? "hint_climate_off_after" : action === "eco" ? "hint_climate_eco_after" : "hint_climate_setback_after";
+    hint = t(key, { d: formatDelay(delay, t) });
+  }
+
+  return {
+    kind: "climate", title: t("climate"), entities: ids, on, level: null, step: 1, value, hint, auto,
+    autoEntity: room.auto_climate, mode, setpoint,
+  };
 }
 
 function ambient(hass: Hass, room: RoomEntities, a: Record<string, any>, t: Translate, language: string): AmbientItem[] {
@@ -458,16 +581,27 @@ export interface SettingRow {
   kind: SettingKind;
   label: string;
   help?: string;
+  /** Libellés des options d'une liste de choix. */
+  options?: Record<string, string>;
 }
 
 export interface SettingTab {
-  id: "lights" | "fans" | "night" | "presence";
+  id: "lights" | "fans" | "climate" | "night" | "presence";
   label: string;
   icon: IconName;
   rows: SettingRow[];
 }
 
-const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: [LuminaKey, SettingKind, StringKey, StringKey?][] }[] = [
+const ALL_ANY: Record<string, StringKey> = { all: "o_all", any: "o_any" };
+const ALL_ANY_M: Record<string, StringKey> = { all: "o_all_m", any: "o_any_m" };
+const CLIMATE_ACTIONS: Record<string, StringKey> = {
+  off: "o_climate_off", eco: "o_climate_eco", setback: "o_climate_setback", none: "o_climate_none",
+};
+const FANS_WITH_CLIMATE: Record<string, StringKey> = { normal: "o_fans_normal", mix: "o_fans_mix", off: "o_fans_off" };
+
+type RowSpec = [LuminaKey, SettingKind, StringKey, StringKey?, Record<string, StringKey>?];
+
+const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowSpec[] }[] = [
   {
     id: "lights", label: "tab_lights", icon: "lightbulb", rows: [
       ["auto_lights", "switch", "s_auto"],
@@ -480,7 +614,7 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: [Lum
       ["night_light_off_delay", "number", "s_night_light_off_delay"],
       ["light_warning_duration", "number", "s_light_warning_duration", "h_light_warning_duration"],
       ["daylight_off_lux", "number", "s_daylight_off_lux", "h_daylight_off_lux"],
-      ["lights_mode", "select", "s_lights_mode"],
+      ["lights_mode", "select", "s_lights_mode", undefined, ALL_ANY],
     ],
   },
   {
@@ -492,6 +626,17 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: [Lum
       ["fan_speed_range", "number", "s_fan_speed_range", "h_fan_speed_range"],
       ["fan_off_delay", "number", "s_fan_off_delay"],
       ["night_fan_off_delay", "number", "s_night_fan_off_delay"],
+      ["fans_mode", "select", "s_fans_mode", undefined, ALL_ANY_M],
+    ],
+  },
+  {
+    id: "climate", label: "tab_climate", icon: "climate", rows: [
+      ["auto_climate", "switch", "s_auto"],
+      ["climate_vacant_day", "select", "s_climate_vacant_day", "h_climate_vacant", CLIMATE_ACTIONS],
+      ["climate_vacant_night", "select", "s_climate_vacant_night", "h_climate_vacant_night", CLIMATE_ACTIONS],
+      ["climate_vacant_delay", "number", "s_climate_vacant_delay", "h_climate_vacant_delay"],
+      ["fans_with_climate", "select", "s_fans_with_climate", undefined, FANS_WITH_CLIMATE],
+      ["fan_mix_speed", "number", "s_fan_mix_speed"],
     ],
   },
   {
@@ -499,6 +644,7 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: [Lum
       ["forced_night", "switch", "s_forced_night", "h_forced_night"],
       ["night_start", "time", "s_night_start", "h_night_window"],
       ["night_end", "time", "s_night_end"],
+      ["night_override_until_morning", "switch", "s_night_override_until_morning", "h_night_override_until_morning"],
     ],
   },
   {
@@ -517,8 +663,9 @@ export function settingTabs(room: RoomEntities, t: Translate): SettingTab[] {
     icon: tab.icon,
     rows: tab.rows
       .filter(([key]) => room[key])
-      .map(([key, kind, label, help]) => ({
+      .map(([key, kind, label, help, options]) => ({
         key, entity: room[key]!, kind, label: t(label), help: help ? t(help) : undefined,
+        options: options && Object.fromEntries(Object.entries(options).map(([option, text]) => [option, t(text)])),
       })),
   })).filter((tab) => tab.rows.length > 0);
 }

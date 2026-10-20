@@ -12,6 +12,7 @@ import {
   type CardConfig,
   type Hass,
   type Pane,
+  type PaneKind,
   type Pending,
   type RoomView,
   type SettingRow,
@@ -70,6 +71,7 @@ export class LuminaCard extends BaseElement {
   private _numberTimers = new Map<string, number>();
   private _tick?: number;
   private _dragging?: { kind: "lights" | "fans"; slider: HTMLElement };
+  private _setpointTimer?: number;
   private _root: ShadowRoot;
 
   constructor() {
@@ -134,7 +136,7 @@ export class LuminaCard extends BaseElement {
     const ids = new Set<string>(Object.values(view.entities).filter((e): e is string => !!e));
     const roomState = view.entities.room_state ? hass.states[view.entities.room_state] : undefined;
     const a = roomState?.attributes ?? {};
-    for (const key of ["lights", "fans", "presence_sensors", "presence_hold_entities"]) {
+    for (const key of ["lights", "fans", "climates", "presence_sensors", "presence_hold_entities"]) {
       for (const id of (a[key] as string[] | undefined) ?? []) ids.add(id);
     }
     for (const key of ["illuminance_sensor", "temperature_sensor", "humidity_sensor"]) {
@@ -236,8 +238,12 @@ export class LuminaCard extends BaseElement {
   }
 
   private _renderPane(pane: Pane, t: ReturnType<typeof translator>): string {
-    const icon: IconName =
-      pane.kind === "lights" ? (pane.on ? "lightbulb" : "lightbulbOff") : pane.on ? "fan" : "fanOff";
+    const icons: Record<PaneKind, [IconName, IconName]> = {
+      lights: ["lightbulb", "lightbulbOff"],
+      fans: ["fan", "fanOff"],
+      climate: ["climate", "climateOff"],
+    };
+    const icon = icons[pane.kind][pane.on ? 0 : 1];
     const pillLabel =
       pane.auto === "auto" ? t("pill_auto") : pane.auto === "manual" ? t("pill_manual") : t("pill_paused");
     const pillTitle =
@@ -247,8 +253,19 @@ export class LuminaCard extends BaseElement {
       ? `<button class="pill pill-${pane.auto}" data-action="auto" data-kind="${pane.kind}" title="${esc(pillTitle)}">${svg(pillIcon)}${esc(pillLabel)}</button>`
       : "";
     const level = pane.level ?? (pane.on ? 100 : 0);
-    const slider =
-      pane.level !== null
+    const language = languageOf(this._hass!);
+    const sp = pane.setpoint;
+    const slider = sp
+      ? `<div class="stepper setpoint" role="group" aria-label="${esc(t("setpoint"))}">
+          <button data-action="setpoint" data-dir="-1" ${sp.value <= sp.min ? "disabled" : ""}
+            title="${esc(t("setpoint_down"))}" aria-label="${esc(t("setpoint_down"))}">${svg("minus")}</button>
+          <div class="stepper-value ${this._pending.climate !== undefined ? "pending" : ""}">
+            <span>${esc(formatValue(sp.value, sp.step, language))}&nbsp;°C</span>
+          </div>
+          <button data-action="setpoint" data-dir="1" ${sp.value >= sp.max ? "disabled" : ""}
+            title="${esc(t("setpoint_up"))}" aria-label="${esc(t("setpoint_up"))}">${svg("plus")}</button>
+        </div>`
+      : pane.level !== null
         ? `<div class="slider ${pane.level === 0 ? "zero" : ""}" role="slider" tabindex="0"
               aria-label="${esc(pane.title)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pane.level}"
               data-kind="${pane.kind}" style="--value:${pane.level}">
@@ -257,7 +274,7 @@ export class LuminaCard extends BaseElement {
         : "";
     const style = `--level:${level};${pane.spin ? `--spin:${pane.spin.toFixed(2)}s;` : ""}`;
     return `
-      <section class="pane pane-${pane.kind} ${pane.on ? "on" : ""}" style="${style}">
+      <section class="pane pane-${pane.kind} ${pane.on ? "on" : ""}" ${pane.mode ? `data-mode="${esc(pane.mode)}"` : ""} style="${style}">
         <div class="pane-top">
           <button class="pane-icon" data-action="toggle" data-kind="${pane.kind}"
             aria-pressed="${pane.on}" title="${esc(t("toggle"))}" aria-label="${esc(`${pane.title} : ${t("toggle")}`)}">${svg(icon)}</button>
@@ -324,7 +341,7 @@ export class LuminaCard extends BaseElement {
       const options: string[] = state.attributes.options ?? [];
       const buttons = options
         .map((option) => {
-          const label = option === "all" ? t("o_all") : option === "any" ? t("o_any") : option;
+          const label = row.options?.[option] ?? option;
           return `<button data-action="select" data-entity="${esc(row.entity)}" data-option="${esc(option)}"
             aria-pressed="${state.state === option}">${esc(label)}</button>`;
         })
@@ -432,7 +449,7 @@ export class LuminaCard extends BaseElement {
         if (room.resume) this._call("button", "press", { entity_id: room.resume });
         break;
       case "enable": {
-        const ids = [room.auto_lights, room.auto_fans].filter(
+        const ids = [room.auto_lights, room.auto_fans, room.auto_climate].filter(
           (id): id is string => !!id && this._hass!.states[id]?.state === "off",
         );
         if (ids.length) this._call("switch", "turn_on", { entity_id: ids });
@@ -459,6 +476,9 @@ export class LuminaCard extends BaseElement {
         break;
       case "step":
         if (entity) this._step(entity, Number(target.dataset.dir));
+        break;
+      case "setpoint":
+        this._setpoint(Number(target.dataset.dir));
         break;
     }
   }
@@ -505,6 +525,33 @@ export class LuminaCard extends BaseElement {
         }, 1500);
       }, 700),
     );
+  }
+
+  /** Consigne de la clim : affichée tout de suite, envoyée après une pause. */
+  private _setpoint(direction: number): void {
+    const pane = this._pane("climate");
+    const sp = pane?.setpoint;
+    if (!pane || !sp) return;
+    const next = Math.min(sp.max, Math.max(sp.min, Number((sp.value + direction * sp.step).toFixed(2))));
+    this._pending.climate = next;
+    this._signature = [];
+    this._render();
+
+    window.clearTimeout(this._setpointTimer);
+    window.clearTimeout(this._pendingTimers.climate);
+    this._setpointTimer = window.setTimeout(async () => {
+      // Seules les clims en marche reçoivent la consigne
+      const ids = pane.entities.filter((id) => {
+        const state = this._hass!.states[id]?.state;
+        return state !== undefined && !["off", "unavailable", "unknown"].includes(state);
+      });
+      if (ids.length) await this._call("climate", "set_temperature", { entity_id: ids, temperature: next });
+      this._pendingTimers.climate = window.setTimeout(() => {
+        delete this._pending.climate;
+        this._signature = [];
+        this._render();
+      }, 2500);
+    }, 700);
   }
 
   // --- Curseurs ---------------------------------------------------------------
