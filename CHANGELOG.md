@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 — 2026-10-20
+
+- Réglages de la clim : l'option « +2 °C » devient « Modérer », juste aussi en chauffage où la consigne est abaissée.
+
 ## 0.2.0 — 2026-10-20
 
 Suit les nouveautés de Lumina 0.7 et 0.8.

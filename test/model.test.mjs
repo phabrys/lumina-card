@@ -278,7 +278,7 @@ test("réglages : onglet clim, ventilateurs à allumer, contrôle jusqu'au matin
   assert.deepEqual(climate.rows.map((r) => r.key), [
     "auto_climate", "climate_vacant_day", "climate_vacant_night", "climate_vacant_delay", "fans_with_climate", "fan_mix_speed",
   ]);
-  assert.equal(climate.rows[1].options.setback, "+2 °C");
+  assert.equal(climate.rows[1].options.setback, "Modérer");
   const fans = tabs.find((tab) => tab.id === "fans");
   assert.deepEqual(fans.rows.at(-1).options, { all: "Tous", any: "Si aucun allumé" });
   assert.ok(tabs.find((tab) => tab.id === "night").rows.some((r) => r.key === "night_override_until_morning"));
