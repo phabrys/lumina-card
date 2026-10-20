@@ -1,5 +1,5 @@
-// Faux objet `hass` reproduisant une pièce Lumina 0.6, partagé par les tests
-// et par la page de démonstration.
+// Faux objet `hass` reproduisant une pièce Lumina 0.8, partagé par les tests
+// et par la page de démonstration. La clim est facultative (`climate: true`).
 
 export const DEVICE = "dev_chambre";
 
@@ -12,6 +12,8 @@ const KEYS = {
   forced_night: "switch.lumina_chambre_nuit_maintenant",
   resume: "button.lumina_chambre_reprendre",
   lights_mode: "select.lumina_chambre_lumieres_a_allumer",
+  fans_mode: "select.lumina_chambre_ventilateurs_a_allumer",
+  night_override_until_morning: "switch.lumina_chambre_manuel_jusqu_au_matin",
   night_start: "time.lumina_chambre_debut_nuit",
   night_end: "time.lumina_chambre_fin_nuit",
   lux_threshold: "number.lumina_chambre_seuil_lux",
@@ -22,7 +24,15 @@ const KEYS = {
   fan_min_speed: "number.lumina_chambre_vitesse_min",
   vacancy_confirmation: "number.lumina_chambre_confirmation",
   override_duration: "number.lumina_chambre_duree_manuel",
+  auto_climate: "switch.lumina_chambre_auto_clim",
+  climate_vacant_day: "select.lumina_chambre_clim_vide_jour",
+  climate_vacant_night: "select.lumina_chambre_clim_vide_nuit",
+  climate_vacant_delay: "number.lumina_chambre_delai_clim",
+  fans_with_climate: "select.lumina_chambre_ventilateurs_pendant_clim",
+  fan_mix_speed: "number.lumina_chambre_vitesse_brassage",
 };
+
+const CLIMATE_ACTIONS = ["off", "eco", "setback", "none"];
 
 const number = (state, unit, min, max, step) => ({
   state: String(state),
@@ -33,7 +43,36 @@ const number = (state, unit, min, max, step) => ({
  * Construit une pièce. `room` complète les attributs du capteur d'état,
  * `states` remplace ou ajoute des états.
  */
-export function makeHass({ room = {}, states = {}, language = "fr", calls = [] } = {}) {
+export function makeHass({ room = {}, states = {}, language = "fr", calls = [], climate = false } = {}) {
+  const climateStates = climate
+    ? {
+        [KEYS.auto_climate]: { state: "on", attributes: {} },
+        [KEYS.climate_vacant_day]: { state: "off", attributes: { options: CLIMATE_ACTIONS } },
+        [KEYS.climate_vacant_night]: { state: "none", attributes: { options: CLIMATE_ACTIONS } },
+        [KEYS.climate_vacant_delay]: number(900, "s", 0, 7200, 60),
+        [KEYS.fans_with_climate]: { state: "normal", attributes: { options: ["normal", "mix", "off"] } },
+        [KEYS.fan_mix_speed]: number(33, "%", 10, 100, 1),
+        "climate.chambre": {
+          state: "cool",
+          attributes: {
+            temperature: 24, current_temperature: 26.5, min_temp: 16, max_temp: 30, target_temp_step: 0.5,
+            hvac_modes: ["off", "cool", "heat", "dry", "fan_only"], preset_mode: "none", preset_modes: ["none", "eco"],
+            friendly_name: "Clim chambre",
+          },
+        },
+      }
+    : {};
+  const climateRoom = climate
+    ? {
+        climates: ["climate.chambre"],
+        climate_override_until: null,
+        climate_running: true,
+        climate_vacant_action: "off",
+        climate_vacant_at: null,
+        climate_vacant_applied: null,
+        fans_with_climate: "normal",
+      }
+    : { climates: [] };
   const base = {
     [ROOM]: {
       state: "occupied",
@@ -57,6 +96,9 @@ export function makeHass({ room = {}, states = {}, language = "fr", calls = [] }
         humidity_sensor: "sensor.humidite_chambre",
         lights: ["light.chambre"],
         fans: ["fan.chambre"],
+        lights_mode: "all",
+        fans_mode: "all",
+        ...climateRoom,
         ...room,
       },
     },
@@ -66,6 +108,8 @@ export function makeHass({ room = {}, states = {}, language = "fr", calls = [] }
     [KEYS.forced_night]: { state: "off", attributes: { until: null } },
     [KEYS.resume]: { state: "unknown", attributes: {} },
     [KEYS.lights_mode]: { state: "all", attributes: { options: ["all", "any"] } },
+    [KEYS.fans_mode]: { state: "all", attributes: { options: ["all", "any"] } },
+    [KEYS.night_override_until_morning]: { state: "on", attributes: {} },
     [KEYS.night_start]: { state: "22:00:00", attributes: {} },
     [KEYS.night_end]: { state: "07:00:00", attributes: {} },
     [KEYS.lux_threshold]: number(50, "lx", 0, 2000, 5),
@@ -88,7 +132,7 @@ export function makeHass({ room = {}, states = {}, language = "fr", calls = [] }
     "fan.chambre": { state: "on", attributes: { percentage: 66, percentage_step: 33, friendly_name: "Ventilateur" } },
   };
 
-  const all = { ...base, ...states };
+  const all = { ...base, ...climateStates, ...states };
   const hassStates = {};
   for (const [entity_id, value] of Object.entries(all)) {
     if (value) hassStates[entity_id] = { entity_id, ...value };

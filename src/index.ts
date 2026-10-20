@@ -14,7 +14,7 @@ if (typeof customElements !== "undefined") {
     registry.push({
       type: "lumina-card",
       name: "Lumina",
-      description: "Pilote une pièce gérée par Lumina : lumière, ventilateur, nuit et réglages.",
+      description: "Pilote une pièce gérée par Lumina : lumière, ventilateur, clim, nuit et réglages.",
       preview: true,
       documentationURL: "https://github.com/phabrys/lumina-card",
     });

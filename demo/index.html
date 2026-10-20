@@ -16,6 +16,8 @@
     --primary-color: #009ac7;
     --state-light-active-color: #ffb300;
     --state-fan-active-color: #00bcd4;
+    --state-climate-cool-color: #2b9af9;
+    --state-climate-heat-color: #ff8100;
     --success-color: #43a047;
     --warning-color: #ef6c00;
     --error-color: #db4437;
@@ -31,6 +33,8 @@
     --primary-color: #009ac7;
     --state-light-active-color: #ffb300;
     --state-fan-active-color: #00bcd4;
+    --state-climate-cool-color: #2b9af9;
+    --state-climate-heat-color: #ff8100;
     --success-color: #45a14a;
     --warning-color: #ff9800;
     --error-color: #ef5350;
@@ -99,7 +103,24 @@
         return hass;
       })(),
     },
+    climate: {
+      label: "Clim en marche, ventilateur en brassage",
+      hass: makeHass({ climate: true, room: { fans_with_climate: "mix" },
+        states: { "fan.chambre": { state: "on", attributes: { percentage: 33, percentage_step: 33 } } } }),
+    },
+    away: (() => {
+      const hass = makeHass({ climate: true,
+        room: { occupied: false, climate_vacant_action: "eco", climate_vacant_at: at(9 * 60 + 40) },
+        states: {
+          "binary_sensor.fp2_chambre": { state: "off", attributes: {} },
+          "light.chambre": { state: "off", attributes: { supported_color_modes: ["color_temp"] } },
+          "fan.chambre": { state: "off", attributes: { percentage: 0, percentage_step: 33 } },
+        } });
+      hass.states[ENTITIES.room_state].state = "vacant";
+      return { label: "Pièce vide, clim bientôt en eco", hass };
+    })(),
     settings: { label: "Réglages", hass: makeHass(), settings: true },
+    climateSettings: { label: "Réglages de la clim", hass: makeHass({ climate: true }), settings: "climate" },
   };
 
   // Les actions sont journalisées au lieu d'être envoyées
@@ -127,6 +148,7 @@
       section.appendChild(figure);
       card.hass = scene.hass;
       if (scene.settings) card.shadowRoot.querySelector('[data-action="settings"]').click();
+      if (typeof scene.settings === "string") card.shadowRoot.querySelector(`[data-tab="${scene.settings}"]`).click();
     }
   }
   document.body.dataset.ready = "1";

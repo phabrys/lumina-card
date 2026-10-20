@@ -11,6 +11,8 @@ export const STYLES = `
   --lc-surface: color-mix(in srgb, var(--lc-text) 5%, transparent);
   --lc-light: var(--state-light-active-color, #f2a93b);
   --lc-fan: var(--state-fan-active-color, #23b5a8);
+  --lc-cool: var(--state-climate-cool-color, #2b9af9);
+  --lc-heat: var(--state-climate-heat-color, #ff8100);
   --lc-night: #7a7ff2;
   --lc-manual: var(--warning-color, #f08c2e);
   --lc-countdown: var(--primary-color, #3e8ef7);
@@ -200,6 +202,22 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   min-width: 0;
 }
 .pane-fans { --lc-accent: var(--lc-fan); }
+.pane-climate { --lc-accent: var(--lc-cool); }
+.pane-climate[data-mode="heat"] { --lc-accent: var(--lc-heat); }
+.pane-climate[data-mode="heat_cool"], .pane-climate[data-mode="auto"] { --lc-accent: var(--state-climate-auto-color, #008000); }
+.pane-climate[data-mode="dry"] { --lc-accent: var(--state-climate-dry-color, #efbd07); }
+.pane-climate[data-mode="fan_only"] { --lc-accent: var(--lc-fan); }
+
+/* Consigne de la clim, à la place du curseur */
+.pane .setpoint {
+  justify-content: space-between;
+  height: 28px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--lc-text) 9%, transparent);
+}
+.pane .setpoint button { width: 28px; height: 28px; background: transparent; }
+.pane .setpoint button:hover { background: color-mix(in srgb, var(--lc-accent) 22%, transparent); }
+.pane .setpoint .stepper-value { min-width: 0; }
 .pane.on {
   background: color-mix(in srgb, var(--lc-accent) calc(7% + var(--level, 100) * 0.09%), transparent);
 }
@@ -489,6 +507,10 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
 @container lumina (max-width: 300px) {
   .row { flex-wrap: wrap; }
   .tab span { display: none; }
+}
+/* Trois panneaux sur deux colonnes : le dernier prend toute la largeur */
+@container lumina (min-width: 330px) and (max-width: 519px) {
+  .pane:nth-child(3):last-child { grid-column: 1 / -1; }
 }
 .card { container: lumina / inline-size; }
 `;

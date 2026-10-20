@@ -131,6 +131,7 @@ test("pièce sans ventilateur : un seul panneau, pas d'onglet ventilateur", () =
       [ENTITIES.auto_fans]: undefined,
       [ENTITIES.temperature_threshold]: undefined,
       [ENTITIES.fan_min_speed]: undefined,
+      [ENTITIES.fans_mode]: undefined,
       [ENTITIES.apparent_temperature]: undefined,
     },
   });
@@ -171,4 +172,121 @@ test("curseur du ventilateur aligné sur ses paliers", () => {
   assert.equal(snap(90, 33), 100);
   assert.equal(snap(10, 33), 0);
   assert.equal(snap(42, 1), 42);
+});
+
+// --- Lumina 0.7 et 0.8 : clims, ventilateurs pendant la clim, nuit -----------
+
+test("clim : troisième panneau avec mode, consigne et comportement en pièce vide", () => {
+  const view = buildView(makeHass({ climate: true }), config, NOW);
+  assert.deepEqual(view.panes.map((p) => p.kind), ["lights", "fans", "climate"]);
+  const climate = view.panes[2];
+  assert.equal(climate.on, true);
+  assert.equal(climate.value, "Froid");
+  assert.equal(climate.mode, "cool");
+  assert.deepEqual(climate.setpoint, { value: 24, min: 16, max: 30, step: 0.5 });
+  assert.equal(climate.hint, "S'éteint 15 min après ton départ");
+  assert.equal(climate.auto, "auto");
+  assert.equal(climate.autoEntity, ENTITIES.auto_climate);
+});
+
+test("clim éteinte : Lumina ne l'allume jamais, pas de consigne", () => {
+  const hass = makeHass({ climate: true, states: { "climate.chambre": { state: "off", attributes: { temperature: 24 } } } });
+  const climate = buildView(hass, config, NOW).panes[2];
+  assert.equal(climate.on, false);
+  assert.equal(climate.value, "Éteinte");
+  assert.equal(climate.setpoint, undefined);
+  assert.equal(climate.hint, "Lumina ne l'allume jamais");
+});
+
+test("clim la nuit sans action : Lumina la laisse tourner", () => {
+  const hass = makeHass({ climate: true, room: { period: "night", climate_vacant_action: "none" } });
+  assert.equal(buildView(hass, config, NOW).panes[2].hint, "Lumina la laisse tourner la nuit");
+});
+
+test("pièce vide : action sur la clim dans le compte à rebours", () => {
+  const hass = makeHass({
+    climate: true,
+    room: { occupied: false, lights_off_at: inSeconds(95), climate_vacant_at: inSeconds(840), climate_vacant_action: "eco" },
+  });
+  hass.states[ENTITIES.room_state].state = "vacant";
+  const view = buildView(hass, config, NOW);
+  assert.equal(view.now.text, "La lumière s'éteint dans 1:35");
+  assert.deepEqual(view.notes, ["La clim passe en eco dans 14:00"]);
+});
+
+test("pièce vide : clim éteinte en ton absence, rétablie au retour", () => {
+  const hass = makeHass({
+    climate: true,
+    room: { occupied: false, climate_vacant_applied: "off" },
+    states: { "climate.chambre": { state: "off", attributes: {} } },
+  });
+  hass.states[ENTITIES.room_state].state = "vacant";
+  const view = buildView(hass, config, NOW);
+  assert.ok(view.notes.includes("Clim éteinte en ton absence, rétablie à ton retour"));
+  assert.equal(view.panes[2].hint, "Rétablie à ton retour");
+});
+
+test("contrôle manuel de plusieurs groupes, clim comprise", () => {
+  const hass = makeHass({
+    climate: true,
+    room: { lights_override_until: inSeconds(1200), climate_override_until: inSeconds(600) },
+  });
+  const view = buildView(hass, config, NOW);
+  assert.match(view.now.text, /^Lumière et clim en manuel jusqu'à \d\d:\d\d$/);
+  assert.equal(view.panes[2].auto, "manual");
+});
+
+test("la nuit, un geste manuel tient jusqu'au matin", () => {
+  const morning = new Date(NOW);
+  morning.setDate(morning.getDate() + 1);
+  morning.setHours(7, 0, 0, 0); // heure de fin de nuit des fixtures
+  const hass = makeHass({ room: { period: "night", fans_override_until: morning.toISOString() } });
+  const view = buildView(hass, config, NOW);
+  assert.match(view.now.text, /^Ventilateur en manuel jusqu'au matin \(07:00\)$/);
+  hass.states[ENTITIES.night_override_until_morning].state = "off";
+  assert.match(buildView(hass, config, NOW).now.text, /^Ventilateur en manuel jusqu'à 07:00$/);
+});
+
+test("ventilateurs pendant la clim : brassage ou arrêt", () => {
+  const mix = makeHass({ climate: true, room: { fans_with_climate: "mix" } });
+  assert.equal(buildView(mix, config, NOW).panes[1].hint, "Brassage à 33 % pendant la clim");
+  const off = makeHass({ climate: true, room: { fans_with_climate: "off" } });
+  assert.equal(buildView(off, config, NOW).panes[1].hint, "Arrêté pendant la clim");
+  const idle = makeHass({ climate: true, room: { fans_with_climate: "off", climate_running: false } });
+  assert.match(buildView(idle, config, NOW).panes[1].hint, /^S'arrête sous/);
+});
+
+test("tout en pause, clim comprise : bouton Réactiver", () => {
+  const hass = makeHass({
+    climate: true,
+    states: {
+      [ENTITIES.auto_lights]: { state: "off", attributes: {} },
+      [ENTITIES.auto_fans]: { state: "off", attributes: {} },
+      [ENTITIES.auto_climate]: { state: "off", attributes: {} },
+    },
+  });
+  assert.equal(buildView(hass, config, NOW).now.action.kind, "enable");
+  hass.states[ENTITIES.auto_climate].state = "on";
+  assert.equal(buildView(hass, config, NOW).now.text, "Pièce occupée");
+});
+
+test("réglages : onglet clim, ventilateurs à allumer, contrôle jusqu'au matin", () => {
+  const view = buildView(makeHass({ climate: true }), config, NOW);
+  const tabs = settingTabs(view.entities, translator("fr"));
+  assert.deepEqual(tabs.map((tab) => tab.id), ["lights", "fans", "climate", "night", "presence"]);
+  const climate = tabs.find((tab) => tab.id === "climate");
+  assert.deepEqual(climate.rows.map((r) => r.key), [
+    "auto_climate", "climate_vacant_day", "climate_vacant_night", "climate_vacant_delay", "fans_with_climate", "fan_mix_speed",
+  ]);
+  assert.equal(climate.rows[1].options.setback, "+2 °C");
+  const fans = tabs.find((tab) => tab.id === "fans");
+  assert.deepEqual(fans.rows.at(-1).options, { all: "Tous", any: "Si aucun allumé" });
+  assert.ok(tabs.find((tab) => tab.id === "night").rows.some((r) => r.key === "night_override_until_morning"));
+});
+
+test("pièce avec clim seule", () => {
+  const hass = makeHass({ climate: true, room: { lights: [], fans: [] } });
+  const view = buildView(hass, config, NOW);
+  assert.deepEqual(view.panes.map((p) => p.kind), ["climate"]);
+  assert.equal(view.now.text, "Pièce occupée");
 });

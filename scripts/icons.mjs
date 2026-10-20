@@ -29,6 +29,8 @@ const names = {
   plus: "mdiPlus",
   presence: "mdiMotionSensor",
   clock: "mdiClockOutline",
+  climate: "mdiAirConditioner",
+  climateOff: "mdiSnowflakeOff",
 };
 const js = readFileSync(source, "utf8");
 const out = ["// Généré par scripts/icons.mjs — Material Design Icons (Apache 2.0).", "export const ICONS = {"];
