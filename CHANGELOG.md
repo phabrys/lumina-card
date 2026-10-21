@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 — 2026-10-21
+
+Suit le sommeil de Lumina 0.10.
+
+- Sommeil : la phrase devient « En sommeil jusqu'à 07:00 », avec un bouton **Réveiller**. Une note précise au besoin que la pièce est présumée occupée malgré le détecteur, qu'elle se réveillera quand elle se videra (sommeil deviné au salon), ou quelle entité elle suit. Une lampe allumée à la main pendant le sommeil apparaît en note avec son heure de reprise.
+- En-tête : bouton **Sommeil** à côté de la pastille Jour / Nuit, qu'il remplace pendant le sommeil.
+- Panneaux : « Pas d'allumage pendant le sommeil » ou « Veilleuse à 5 % pendant le sommeil » pour la lumière, « Tourne jusqu'au réveil » pour un ventilateur sans capteur de température, « Lumina la laisse tourner pendant le sommeil » pour la clim. Les délais et seuils affichés sont ceux de nuit pendant une sieste.
+- Contrôle manuel : « jusqu'au réveil » au lieu de « jusqu'au matin », lu dans `overrides_until_wake`.
+- Réveil du matin : note et indication « Lumière gardée éteinte jusqu'à ton départ ».
+- Réglages, onglet Nuit : Sommeil, Extinction à la main la nuit (Manuel / Salon / Chambre) et Veilleuse en sommeil. « Contrôle manuel jusqu'au matin » reste affiché avec un Lumina antérieur à 0.10.
+- La pièce est dite occupée ou vide d'après l'attribut `occupied` de Lumina, et non plus d'après l'état du capteur, qui peut valoir « En sommeil ».
+
 ## 0.2.3 — 2026-10-21
 
 - Un groupe que Lumina ne gère plus (automatisme en pause) n'a plus de panneau : lumière, ventilateur ou clim disparaît de la carte et réapparaît dès que l'automatisme est réactivé. Une note signale toujours la pause.

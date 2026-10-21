@@ -119,6 +119,21 @@
       hass.states[ENTITIES.room_state].state = "vacant";
       return { label: "Pièce vide, clim bientôt en eco", hass };
     })(),
+    sleep: (() => {
+      const until = new Date(now + 8 * 3600e3);
+      until.setHours(7, 0, 0, 0);
+      const hass = makeHass({ sleep: true,
+        room: { period: "night", occupied: false, sleeping: true, sleeping_until: until.toISOString(),
+          sleep_source: "manual", presumed_occupied: true },
+        states: {
+          "binary_sensor.fp2_chambre": { state: "off", attributes: {} },
+          "light.chambre": { state: "off", attributes: { supported_color_modes: ["color_temp"] } },
+          "fan.chambre": { state: "on", attributes: { percentage: 33, percentage_step: 33 } },
+        } });
+      hass.states[ENTITIES.room_state].state = "sleeping";
+      return { label: "En sommeil, dormeur hors de vue du détecteur", hass };
+    })(),
+    sleepSettings: { label: "Réglages de la nuit et du sommeil", hass: makeHass({ sleep: true }), settings: "night" },
     settings: { label: "Réglages", hass: makeHass(), settings: true },
     climateSettings: { label: "Réglages de la clim", hass: makeHass({ climate: true }), settings: "climate" },
   };

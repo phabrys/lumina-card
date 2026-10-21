@@ -63,7 +63,7 @@ test("confirmation d'absence en cours", () => {
 });
 
 test("pièce vide : extinctions programmées, la plus proche d'abord", () => {
-  const hass = makeHass({ room: { lights_off_at: inSeconds(95), fans_off_at: inSeconds(280) } });
+  const hass = makeHass({ room: { occupied: false, lights_off_at: inSeconds(95), fans_off_at: inSeconds(280) } });
   hass.states[ENTITIES.room_state].state = "vacant";
   const view = buildView(hass, config, NOW);
   assert.equal(view.now.text, "La lumière s'éteint dans 1:35");
@@ -359,4 +359,97 @@ test("pièce avec clim seule", () => {
   const view = buildView(hass, config, NOW);
   assert.deepEqual(view.panes.map((p) => p.kind), ["climate"]);
   assert.equal(view.now.text, "Pièce occupée");
+});
+
+// --- Lumina 0.10 : sommeil ----------------------------------------------------
+
+const morningAt = () => {
+  const morning = new Date(NOW);
+  morning.setDate(morning.getDate() + 1);
+  morning.setHours(7, 0, 0, 0);
+  return morning;
+};
+
+test("sommeil : phrase, bouton Réveiller et panneaux", () => {
+  const hass = makeHass({
+    sleep: true,
+    room: { period: "night", sleeping: true, sleeping_until: morningAt().toISOString(), sleep_source: "manual" },
+    states: { "light.chambre": { state: "off", attributes: { supported_color_modes: ["color_temp"] } } },
+  });
+  hass.states[ENTITIES.room_state].state = "sleeping";
+  const view = buildView(hass, config, NOW);
+  assert.equal(view.sleeping, true);
+  assert.equal(view.now.text, "En sommeil jusqu'à 07:00");
+  assert.equal(view.now.tone, "night");
+  assert.equal(view.now.action.kind, "wake");
+  assert.equal(view.panes[0].hint, "Pas d'allumage pendant le sommeil");
+
+  hass.states[ENTITIES.sleep_brightness].state = "5";
+  assert.equal(buildView(hass, config, NOW).panes[0].hint, "Veilleuse à 5 % pendant le sommeil");
+});
+
+test("sommeil : pièce vide présumée occupée, ventilateur et clim continuent", () => {
+  const hass = makeHass({
+    sleep: true,
+    climate: true,
+    room: {
+      period: "night", occupied: false, sleeping: true, sleeping_until: morningAt().toISOString(),
+      sleep_source: "manual", presumed_occupied: true,
+    },
+    states: { "sensor.temp_chambre": null },
+  });
+  hass.states[ENTITIES.room_state].attributes.temperature_sensor = null;
+  hass.states[ENTITIES.room_state].state = "sleeping";
+  const view = buildView(hass, config, NOW);
+  assert.deepEqual(view.notes, ["Présence présumée malgré le détecteur"]);
+  assert.equal(view.panes[1].hint, "Tourne jusqu'au réveil");
+  assert.equal(view.panes[2].hint, "Lumina la laisse tourner pendant le sommeil");
+});
+
+test("sommeil : gestes jusqu'au réveil, lampe allumée à la main en note", () => {
+  const hass = makeHass({
+    sleep: true,
+    room: {
+      period: "night", sleeping: true, sleeping_until: morningAt().toISOString(), sleep_source: "lights_off",
+      bedtime_gesture: "until_wake", fans_override_until: morningAt().toISOString(),
+      lights_override_until: inSeconds(1800), overrides_until_wake: ["fans"],
+    },
+  });
+  hass.states[ENTITIES.room_state].state = "sleeping";
+  const view = buildView(hass, config, NOW);
+  assert.equal(view.now.text, "En sommeil jusqu'à 07:00");
+  assert.match(view.notes[0], /^Lumière en manuel jusqu'à \d\d:\d\d$/);
+  assert.equal(view.panes[1].hint, "Manuel jusqu'au réveil");
+});
+
+test("sommeil deviné au salon : réveil quand la pièce se vide", () => {
+  const hass = makeHass({
+    sleep: true,
+    room: {
+      period: "night", sleeping: true, sleeping_until: morningAt().toISOString(),
+      sleep_source: "lights_off", bedtime_gesture: "until_vacant",
+    },
+  });
+  assert.deepEqual(buildView(hass, config, NOW).notes, ["Se réveille quand la pièce se vide"]);
+});
+
+test("réveil du matin : lumière gardée éteinte jusqu'au départ", () => {
+  const hass = makeHass({
+    sleep: true,
+    room: { lights_held: true },
+    states: { "light.chambre": { state: "off", attributes: { supported_color_modes: ["color_temp"] } } },
+  });
+  const view = buildView(hass, config, NOW);
+  assert.equal(view.now.text, "Pièce occupée");
+  assert.deepEqual(view.notes, ["Lumière gardée éteinte jusqu'à ton départ"]);
+  assert.equal(view.panes[0].hint, "Reste éteinte jusqu'à ton départ");
+});
+
+test("Lumina 0.10 : réglages du sommeil dans l'onglet Nuit", () => {
+  const view = buildView(makeHass({ sleep: true }), config, NOW);
+  const night = settingTabs(view.entities, translator("fr")).find((tab) => tab.id === "night");
+  assert.deepEqual(night.rows.map((r) => r.key), [
+    "forced_night", "sleeping", "night_start", "night_end", "bedtime_gesture", "sleep_brightness",
+  ]);
+  assert.deepEqual(night.rows[4].options, { override: "Manuel", until_vacant: "Salon", until_wake: "Chambre" });
 });
