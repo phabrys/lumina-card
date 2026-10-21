@@ -9,7 +9,7 @@ Carte Home Assistant pour piloter une pièce gérée par [Lumina](https://github
 
 La carte s'adapte en permanence à l'état de la pièce :
 
-- **Une phrase « maintenant »** résume la situation, avec la priorité à ce qui demande ton attention : avertissement avant extinction (compte à rebours à la seconde), contrôle manuel en cours (avec l'heure de reprise, « jusqu'au matin » la nuit, et un bouton **Rendre la main**), confirmation d'absence, échéances en pièce vide (extinctions, clim éteinte ou passée en eco), automatisme en pause (bouton **Réactiver**), présence maintenue par la TV, puis simplement « Pièce occupée » ou « Pièce vide ».
+- **Une phrase « maintenant »** résume la situation, avec la priorité à ce qui demande ton attention : avertissement avant extinction (compte à rebours à la seconde), sommeil (« En sommeil jusqu'à 07:00 », bouton **Réveiller**), contrôle manuel en cours (avec l'heure de reprise, « jusqu'au matin » la nuit, et un bouton **Rendre la main**), confirmation d'absence, échéances en pièce vide (extinctions, clim éteinte ou passée en eco), automatisme en pause (bouton **Réactiver**), présence maintenue par la TV, puis simplement « Pièce occupée » ou « Pièce vide ».
 - **Jusqu'à deux notes** complètent la phrase seulement quand c'est utile : détecteur de présence indisponible, nuit forcée jusqu'à telle heure, lumière du jour suffisante, pas d'allumage cette nuit, clim éteinte en ton absence et rétablie à ton retour…
 - **Un panneau par groupe** (lumière, ventilateur, clim) avec l'état, un curseur et une indication du prochain comportement : « S'allume sous 50 lx », « S'éteint 2 min après ton départ », « S'arrête sous 27 °C ressentis », « Brassage à 33 % pendant la clim »… L'hélice tourne à la vitesse du ventilateur.
 - **La clim** affiche son mode (froid, chauffage, eco…) dans sa couleur, une consigne réglable par − / + et ce que Lumina fera en ton absence : « S'éteint 15 min après ton départ », « Lumina la laisse tourner la nuit », « Lumina ne l'allume jamais »…
@@ -28,6 +28,7 @@ Une pièce sans ventilateur ni clim n'affiche que la lumière, et les réglages 
 | Pastille **Manuel** | Rend la main à Lumina tout de suite |
 | Valeur d'un panneau | Ouvre la fiche de l'entité |
 | Pastille **Jour / Nuit** | Force la nuit (« Nuit maintenant »), ou l'annule |
+| Bouton **Sommeil** | Met la pièce en sommeil, ou la réveille (Lumina 0.10) |
 | Roue dentée | Réglages de la pièce, par onglets : lumière, ventilateur, clim, nuit, présence |
 
 Dans les réglages, les boutons − / + avancent par pas adaptés à la valeur (5 lx près de 50 lx, 50 lx vers 300 lx, 0,5 °C pour un seuil de température…). La valeur est envoyée une fois que tu arrêtes d'appuyer, et toucher la valeur ouvre la fiche pour une saisie exacte.
@@ -38,7 +39,7 @@ Le curseur se manie aussi au clavier (flèches, Origine, Fin), et la carte suit 
 
 [Lumina](https://github.com/phabrys/lumina) **0.6.0 ou plus récent** : la carte lit les entités pilotées et les comptes à rebours que Lumina publie depuis cette version, et utilise son bouton « Rendre la main ».
 
-Les fonctions plus récentes apparaissent dès que Lumina les fournit : « Ventilateurs à allumer » avec Lumina 0.7.0, clims, ventilateurs pendant la clim et contrôle manuel jusqu'au matin avec Lumina **0.8.0**. Avec Lumina **0.9.2**, la carte sait quel groupe est en manuel jusqu'au matin et lequel ne l'est que pour la durée réglée.
+Les fonctions plus récentes apparaissent dès que Lumina les fournit : « Ventilateurs à allumer » avec Lumina 0.7.0, clims, ventilateurs pendant la clim et contrôle manuel jusqu'au matin avec Lumina **0.8.0**. Avec Lumina **0.9.2**, la carte sait quel groupe est en manuel jusqu'au matin et lequel ne l'est que pour la durée réglée. Le sommeil (bouton, phrase, réglages du geste et de la veilleuse) apparaît avec Lumina **0.10.0**.
 
 ## Installation
 

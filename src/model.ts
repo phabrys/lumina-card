@@ -51,7 +51,8 @@ export type LuminaKey =
   | "light_off_delay" | "night_light_off_delay" | "light_warning_duration" | "daylight_off_lux"
   | "temperature_threshold" | "night_temperature_threshold" | "fan_min_speed" | "fan_speed_range"
   | "fan_off_delay" | "night_fan_off_delay" | "vacancy_confirmation" | "override_duration"
-  | "climate_vacant_day" | "climate_vacant_night" | "climate_vacant_delay" | "fans_with_climate" | "fan_mix_speed";
+  | "climate_vacant_day" | "climate_vacant_night" | "climate_vacant_delay" | "fans_with_climate" | "fan_mix_speed"
+  | "sleeping" | "bedtime_gesture" | "sleep_brightness";
 
 export type RoomEntities = Partial<Record<LuminaKey, string>>;
 
@@ -101,7 +102,7 @@ export interface NowLine {
   text: string;
   icon: IconName;
   tone: Tone;
-  action?: { kind: "resume" | "enable"; label: string };
+  action?: { kind: "resume" | "enable" | "wake"; label: string };
 }
 
 export type AutoState = "auto" | "manual" | "paused";
@@ -147,6 +148,8 @@ export interface RoomView {
   name: string;
   night: boolean;
   forcedNight: boolean;
+  /** Pièce en sommeil (Lumina 0.10). */
+  sleeping: boolean;
   now: NowLine;
   notes: string[];
   panes: Pane[];
@@ -228,7 +231,7 @@ export function buildView(
   const room = resolveRoom(hass, deviceOf(hass, config));
   const name = roomName(hass, config, room);
   const empty: Omit<RoomView, "status" | "now"> = {
-    name, night: false, forcedNight: false, notes: [], panes: [], ambient: [], ticking: false, entities: room,
+    name, night: false, forcedNight: false, sleeping: false, notes: [], panes: [], ambient: [], ticking: false, entities: room,
   };
 
   if (!room.room_state) {
@@ -241,7 +244,14 @@ export function buildView(
 
   const a = roomState.attributes;
   const night = a.period === "night";
-  const occupied = roomState.state !== "vacant";
+  // En sommeil, Lumina applique les réglages de nuit, sieste comprise.
+  const sleeping = a.sleeping === true;
+  const nightRules = night || sleeping;
+  // « En sommeil » et « Contrôle manuel » ne disent pas si la pièce est occupée.
+  const occupied = typeof a.occupied === "boolean" ? a.occupied : roomState.state !== "vacant";
+  // Ventilateurs et clim ne s'arrêtent pas : un dormeur peut échapper au détecteur.
+  const presumed = sleeping && a.presumed_occupied === true;
+  const sleepingUntil = parseDate(a.sleeping_until);
   const lightsIds: string[] = a.lights ?? [];
   const fansIds: string[] = a.fans ?? [];
   const climateIds: string[] = a.climates ?? [];
@@ -271,9 +281,10 @@ export function buildView(
   const lightsPaused = hasLights && lightsAuto === "paused";
   const fansPaused = hasFans && fansAuto === "paused";
   const climatePaused = hasClimate && climateAuto === "paused";
-  // Contrôles manuels « jusqu'au matin » : publiés par Lumina depuis 0.9.2,
-  // déduits de l'heure de fin de nuit avant.
-  const morningKinds: unknown = a.overrides_until_morning;
+  // Contrôles manuels « jusqu'au réveil » (Lumina 0.10), « jusqu'au matin »
+  // publiés depuis 0.9.2, déduits de l'heure de fin de nuit avant.
+  const wake = Array.isArray(a.overrides_until_wake);
+  const morningKinds: unknown = wake ? a.overrides_until_wake : a.overrides_until_morning;
   const untilMorning = (kind: string, until: Date | null): boolean =>
     Array.isArray(morningKinds)
       ? morningKinds.includes(kind)
@@ -308,6 +319,26 @@ export function buildView(
     line = { text: t("warning", { t: countdown(lightsOffAt) }), icon: "timer", tone: "countdown" };
     notes.push(t("note_warning"));
     ticking = true;
+  } else if (sleeping) {
+    line = {
+      text: sleepingUntil ? t("sleeping", { h: clock(sleepingUntil) }) : t("sleeping_plain"),
+      icon: "sleep",
+      tone: "night",
+      action: room.sleeping ? { kind: "wake", label: t("wake") } : undefined,
+    };
+    // Une lampe allumée à la main garde la durée réglée, puis s'éteint.
+    const timed = manual.filter((g) => !g.morning && g.until);
+    if (timed.length) {
+      const until = timed.map((g) => g.until!).sort((x, y) => x.getTime() - y.getTime())[0];
+      notes.push(t("manual", { what: joinWords(timed.map((g) => g.word), t("w_and")), h: clock(until) }));
+    }
+    if (!occupied && scheduled.length) {
+      notes.push(scheduled[0].text(countdown(scheduled[0].at)));
+      ticking = true;
+    }
+    if (presumed && !occupied && (hasFans || hasClimate)) notes.push(t("note_presumed"));
+    else if (a.sleep_source === "lights_off" && a.bedtime_gesture === "until_vacant") notes.push(t("note_sleep_until_vacant"));
+    else if (a.sleep_source === "entity" && a.sleep_entity) notes.push(t("note_sleep_entity", { name: friendly(hass, a.sleep_entity) }));
   } else if (manual.length) {
     // Les groupes à durée réglée d'abord, avec leur échéance la plus proche,
     // puis ceux qui tiennent jusqu'au matin.
@@ -322,9 +353,9 @@ export function buildView(
     const h = until ? clock(until) : "…";
     line = {
       text: !timed.length
-        ? t("manual_morning", { what: joinWords(morning.map((g) => g.word), and), h })
+        ? t(wake ? "manual_wake" : "manual_morning", { what: joinWords(morning.map((g) => g.word), and), h })
         : morning.length
-          ? t("manual_mixed", {
+          ? t(wake ? "manual_mixed_wake" : "manual_mixed", {
               what: joinWords(timed.map((g) => g.word), and),
               h,
               rest: joinWords(morning.map((g) => g.word), and).toLowerCase(),
@@ -377,23 +408,28 @@ export function buildView(
     notes.push(t(applied === "off" ? "note_climate_off" : applied === "eco" ? "note_climate_eco" : "note_climate_setback"));
   }
   if (hasLights && a.daylight_locked) notes.push(t("note_daylight"));
-  if (hasLights && night && !lightsPaused && num(hass, room.night_brightness) === 0) {
+  if (hasLights && a.lights_held && !lightsPaused) notes.push(t("note_lights_held"));
+  if (hasLights && night && !sleeping && !lightsPaused && num(hass, room.night_brightness) === 0) {
     notes.push(t("note_no_night_light"));
   }
 
   const panes: Pane[] = [];
   const manualHint = (until: Date | null, kind: string) =>
-    morningOf(kind) ? t("hint_manual_morning") : t("hint_manual", { h: until ? clock(until) : "…" });
+    morningOf(kind)
+      ? t(wake ? "hint_manual_wake" : "hint_manual_morning")
+      : t("hint_manual", { h: until ? clock(until) : "…" });
+  const mode: PaneMode = { night: nightRules, sleeping, presumed };
   // Un groupe que Lumina ne gère plus (automatisme en pause) n'a pas de panneau
-  if (hasLights && !lightsPaused) panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), night, language, pending.lights));
-  if (hasFans && !fansPaused) panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), night, language, pending.fans));
-  if (hasClimate && !climatePaused) panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), night, pending.climate));
+  if (hasLights && !lightsPaused) panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), mode, language, pending.lights));
+  if (hasFans && !fansPaused) panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), mode, language, pending.fans));
+  if (hasClimate && !climatePaused) panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), mode, pending.climate));
 
   return {
     status: "ok",
     name,
     night,
     forcedNight,
+    sleeping,
     now: line,
     notes: notes.slice(0, 2),
     panes,
@@ -425,6 +461,13 @@ function autoState(hass: Hass, autoEntity: string | undefined, overrideUntil: un
   return "auto";
 }
 
+/** Période qui règle les panneaux : nuit (ou sommeil), sommeil, présomption d'occupation. */
+interface PaneMode {
+  night: boolean;
+  sleeping: boolean;
+  presumed: boolean;
+}
+
 function lightLevel(state: HassEntity | undefined): number | null {
   if (!state || state.state !== "on") return null;
   const brightness = state.attributes.brightness;
@@ -439,7 +482,7 @@ function lightDimmable(state: HassEntity | undefined): boolean {
 
 function lightsPane(
   hass: Hass, room: RoomEntities, a: Record<string, any>, t: Translate, ids: string[],
-  auto: AutoState, manualHint: string, night: boolean, language: string,
+  auto: AutoState, manualHint: string, { night, sleeping }: PaneMode, language: string,
   pending: number | undefined,
 ): Pane {
   const states = ids.map((id) => hass.states[id]);
@@ -462,6 +505,10 @@ function lightsPane(
   else if (on) {
     const delay = num(hass, night ? room.night_light_off_delay ?? room.light_off_delay : room.light_off_delay);
     hint = delay !== null ? t("hint_lights_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
+  } else if (a.lights_held) hint = t("hint_lights_held");
+  else if (sleeping) {
+    const nightLight = num(hass, room.sleep_brightness);
+    hint = nightLight ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) }) : t("hint_no_sleep_light");
   } else if (a.daylight_locked) hint = t("hint_daylight");
   else if (night && num(hass, room.night_brightness) === 0) hint = t("hint_no_night");
   else {
@@ -476,7 +523,7 @@ function lightsPane(
 
 function fansPane(
   hass: Hass, room: RoomEntities, a: Record<string, any>, t: Translate, ids: string[],
-  auto: AutoState, manualHint: string, night: boolean, language: string,
+  auto: AutoState, manualHint: string, { night, presumed }: PaneMode, language: string,
   pending: number | undefined,
 ): Pane {
   const states = ids.map((id) => hass.states[id]);
@@ -508,7 +555,8 @@ function fansPane(
       hint = t(a.humidity_sensor ? "hint_fans_stop_below_apparent" : "hint_fans_stop_below", {
         v: formatNumber(threshold - 1, language, 1),
       });
-    } else {
+    } else if (presumed) hint = t("hint_fans_until_wake");
+    else {
       const delay = num(hass, night ? room.night_fan_off_delay ?? room.fan_off_delay : room.fan_off_delay);
       hint = delay !== null ? t("hint_fans_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
     }
@@ -527,7 +575,7 @@ function fansPane(
 
 function climatePane(
   hass: Hass, room: RoomEntities, a: Record<string, any>, t: Translate, ids: string[],
-  auto: AutoState, manualHint: string, night: boolean, pending: number | undefined,
+  auto: AutoState, manualHint: string, { night, presumed }: PaneMode, pending: number | undefined,
 ): Pane {
   const states = ids.map((id) => hass.states[id]).filter((s): s is HassEntity => !!s);
   const active = states.filter(isClimateOn);
@@ -565,6 +613,8 @@ function climatePane(
   else if (!on) hint = t("hint_climate_never_on");
   // Lumina ne touche pas une clim en simple ventilation (depuis 0.9.0)
   else if (mode === "fan_only") hint = t("hint_climate_fan_only");
+  // Pièce présumée occupée : aucune action en ton absence pendant le sommeil
+  else if (presumed) hint = t("hint_climate_untouched_sleep");
   else if (!action || action === "none") hint = t(night ? "hint_climate_untouched_night" : "hint_climate_untouched");
   else if (delay === null) hint = t("hint_auto_on");
   else {
@@ -627,6 +677,9 @@ const CLIMATE_ACTIONS: Record<string, StringKey> = {
   off: "o_climate_off", eco: "o_climate_eco", setback: "o_climate_setback", none: "o_climate_none",
 };
 const FANS_WITH_CLIMATE: Record<string, StringKey> = { normal: "o_fans_normal", mix: "o_fans_mix", off: "o_fans_off" };
+const BEDTIME: Record<string, StringKey> = {
+  override: "o_bedtime_override", until_vacant: "o_bedtime_until_vacant", until_wake: "o_bedtime_until_wake",
+};
 
 type RowSpec = [LuminaKey, SettingKind, StringKey, StringKey?, Record<string, StringKey>?];
 
@@ -671,8 +724,12 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
   {
     id: "night", label: "tab_night", icon: "moon", rows: [
       ["forced_night", "switch", "s_forced_night", "h_forced_night"],
+      ["sleeping", "switch", "s_sleeping", "h_sleeping"],
       ["night_start", "time", "s_night_start", "h_night_window"],
       ["night_end", "time", "s_night_end"],
+      ["bedtime_gesture", "select", "s_bedtime_gesture", "h_bedtime_gesture", BEDTIME],
+      ["sleep_brightness", "number", "s_sleep_brightness", "h_sleep_brightness"],
+      // Lumina avant 0.10
       ["night_override_until_morning", "switch", "s_night_override_until_morning", "h_night_override_until_morning"],
     ],
   },

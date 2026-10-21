@@ -125,6 +125,12 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
 }
 .period.forced { box-shadow: inset 0 0 0 1.5px var(--lc-night); }
 .period[disabled] { cursor: default; }
+.period.sleep:not(.sleeping) { padding: 0 9px; }
+.period.sleeping {
+  background: color-mix(in srgb, var(--lc-night) 24%, transparent);
+  color: var(--lc-night);
+  box-shadow: inset 0 0 0 1.5px var(--lc-night);
+}
 
 /* --- Phrase « maintenant » ------------------------------------------------ */
 

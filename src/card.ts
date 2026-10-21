@@ -139,7 +139,7 @@ export class LuminaCard extends BaseElement {
     for (const key of ["lights", "fans", "climates", "presence_sensors", "presence_hold_entities"]) {
       for (const id of (a[key] as string[] | undefined) ?? []) ids.add(id);
     }
-    for (const key of ["illuminance_sensor", "temperature_sensor", "humidity_sensor"]) {
+    for (const key of ["illuminance_sensor", "temperature_sensor", "humidity_sensor", "sleep_entity"]) {
       if (a[key]) ids.add(a[key] as string);
     }
     return [languageOf(hass), ...[...ids].sort().map((id) => hass.states[id])];
@@ -183,7 +183,7 @@ export class LuminaCard extends BaseElement {
     const header = `
       <header class="head">
         <div class="name">${esc(view.name)}</div>
-        ${view.status === "ok" ? this._renderPeriod(view) : ""}
+        ${view.status === "ok" ? (view.sleeping ? "" : this._renderPeriod(view)) + this._renderSleep(view) : ""}
         ${hasSettings && view.status === "ok"
           ? `<button class="icon-btn" data-action="settings" title="${esc(t("settings"))}" aria-label="${esc(t("settings"))}">${svg("cog")}</button>`
           : ""}
@@ -234,6 +234,18 @@ export class LuminaCard extends BaseElement {
     return `<button class="period ${view.night ? "night" : ""} ${view.forcedNight ? "forced" : ""}"
         data-action="period" ${actionable ? "" : "disabled"} title="${esc(title)}" aria-label="${esc(title)}">
         ${svg(view.night ? "moon" : "sun")}<span>${esc(label)}</span>
+      </button>`;
+  }
+
+  /** Bouton Sommeil (Lumina 0.10) : endort ou réveille la pièce. En sommeil, il
+   * remplace la pastille Jour / Nuit : le sommeil suit déjà les réglages de nuit. */
+  private _renderSleep(view: RoomView): string {
+    if (!view.entities.sleeping) return "";
+    const t = translator(languageOf(this._hass!));
+    const title = view.sleeping ? t("wake_now") : t("sleep_now");
+    return `<button class="period sleep ${view.sleeping ? "sleeping" : ""}" data-action="sleep"
+        aria-pressed="${view.sleeping}" title="${esc(title)}" aria-label="${esc(title)}">
+        ${svg("sleep")}${view.sleeping ? `<span>${esc(t("sleep"))}</span>` : ""}
       </button>`;
   }
 
@@ -447,6 +459,13 @@ export class LuminaCard extends BaseElement {
         break;
       case "resume":
         if (room.resume) this._call("button", "press", { entity_id: room.resume });
+        break;
+      case "sleep":
+      case "wake":
+        if (room.sleeping) {
+          const asleep = this._hass!.states[room.sleeping]?.state === "on";
+          this._call("switch", action === "wake" || asleep ? "turn_off" : "turn_on", { entity_id: room.sleeping });
+        }
         break;
       case "enable": {
         const ids = [room.auto_lights, room.auto_fans, room.auto_climate].filter(
