@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 — 2026-10-21
+
+- Un groupe que Lumina ne gère plus (automatisme en pause) n'a plus de panneau : lumière, ventilateur ou clim disparaît de la carte et réapparaît dès que l'automatisme est réactivé. Une note signale toujours la pause.
+
 ## 0.2.2 — 2026-10-21
 
 Suit les nouveautés de Lumina 0.9.

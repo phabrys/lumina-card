@@ -384,9 +384,10 @@ export function buildView(
   const panes: Pane[] = [];
   const manualHint = (until: Date | null, kind: string) =>
     morningOf(kind) ? t("hint_manual_morning") : t("hint_manual", { h: until ? clock(until) : "…" });
-  if (hasLights) panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), night, language, pending.lights));
-  if (hasFans) panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), night, language, pending.fans));
-  if (hasClimate) panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), night, pending.climate));
+  // Un groupe que Lumina ne gère plus (automatisme en pause) n'a pas de panneau
+  if (hasLights && !lightsPaused) panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), night, language, pending.lights));
+  if (hasFans && !fansPaused) panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), night, language, pending.fans));
+  if (hasClimate && !climatePaused) panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), night, pending.climate));
 
   return {
     status: "ok",
