@@ -80,7 +80,16 @@ test("automatisme en pause partout : bouton Réactiver", () => {
   const view = buildView(hass, config, NOW);
   assert.equal(view.now.text, "Automatisme en pause");
   assert.equal(view.now.action.kind, "enable");
-  assert.equal(view.panes[0].auto, "paused");
+  assert.deepEqual(view.panes, []);
+});
+
+test("un groupe en pause disparaît des panneaux et revient à sa réactivation", () => {
+  const paused = makeHass({ states: { [ENTITIES.auto_fans]: { state: "off", attributes: {} } } });
+  const view = buildView(paused, config, NOW);
+  assert.deepEqual(view.panes.map((p) => p.kind), ["lights"]);
+  assert.ok(view.notes.includes("Automatisme du ventilateur en pause"));
+  const resumed = makeHass({ states: { [ENTITIES.auto_fans]: { state: "on", attributes: {} } } });
+  assert.deepEqual(buildView(resumed, config, NOW).panes.map((p) => p.kind), ["lights", "fans"]);
 });
 
 test("présence maintenue par la TV", () => {

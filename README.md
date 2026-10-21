@@ -24,8 +24,7 @@ Une pièce sans ventilateur ni clim n'affiche que la lumière, et les réglages 
 | Icône d'un panneau | Allume ou éteint (Lumina le compte comme un contrôle manuel) |
 | Curseur | Luminosité ou vitesse ; le ventilateur suit ses paliers réels |
 | − / + de la clim | Consigne, envoyée une fois que tu arrêtes d'appuyer |
-| Pastille **Auto** | Met l'automatisme du groupe en pause |
-| Pastille **Pause** | Réactive l'automatisme |
+| Pastille **Auto** | Met l'automatisme du groupe en pause : le panneau disparaît tant que Lumina ne le gère plus, et revient dès que l'automatisme est réactivé (bouton **Réactiver** ou réglages) |
 | Pastille **Manuel** | Rend la main à Lumina tout de suite |
 | Valeur d'un panneau | Ouvre la fiche de l'entité |
 | Pastille **Jour / Nuit** | Force la nuit (« Nuit maintenant »), ou l'annule |
