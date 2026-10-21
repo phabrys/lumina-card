@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2 — 2026-10-21
+
+Suit les nouveautés de Lumina 0.9.
+
+- Contrôle manuel la nuit : chaque groupe affiche sa propre échéance (« Ventilateur en manuel jusqu'à 23:40, lumière jusqu'au matin »), lue dans l'attribut `overrides_until_morning` de Lumina 0.9.2. Un allumage à la main qui finit à l'heure de fin de nuit n'est plus annoncé « jusqu'au matin ». Avec un Lumina plus ancien, l'échéance reste déduite de l'heure de fin de nuit.
+- Réglages : l'aide de « Contrôle manuel jusqu'au matin » précise qu'une extinction tient jusqu'au matin et qu'un allumage garde la durée réglée.
+- Clims : une clim en simple ventilation affiche « En ventilation, Lumina ne la touche pas » au lieu d'une extinction prévue.
+- Détecteur de présence indisponible : une note explique que la pièce reste occupée.
+
 ## 0.2.1 — 2026-10-20
 
 - Réglages de la clim : l'option « +2 °C » devient « Modérer », juste aussi en chauffage où la consigne est abaissée.

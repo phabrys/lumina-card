@@ -247,6 +247,67 @@ test("la nuit, un geste manuel tient jusqu'au matin", () => {
   assert.match(buildView(hass, config, NOW).now.text, /^Ventilateur en manuel jusqu'à 07:00$/);
 });
 
+test("Lumina 0.9.2 : chaque groupe garde sa propre échéance la nuit", () => {
+  const morning = new Date(NOW);
+  morning.setDate(morning.getDate() + 1);
+  morning.setHours(7, 0, 0, 0);
+  const hass = makeHass({
+    room: {
+      period: "night",
+      lights_override_until: morning.toISOString(),
+      fans_override_until: inSeconds(1800),
+      overrides_until_morning: ["lights"],
+    },
+  });
+  const view = buildView(hass, config, NOW);
+  assert.match(view.now.text, /^Ventilateur en manuel jusqu'à \d\d:\d\d, lumière jusqu'au matin$/);
+  assert.equal(view.panes[0].hint, "Manuel jusqu'au matin");
+  assert.match(view.panes[1].hint, /^Manuel jusqu'à \d\d:\d\d$/);
+
+  // Lumière seule jusqu'au matin
+  hass.states[ENTITIES.room_state].attributes.fans_override_until = null;
+  assert.equal(buildView(hass, config, NOW).now.text, "Lumière en manuel jusqu'au matin (07:00)");
+});
+
+test("Lumina 0.9.2 : un allumage à l'heure de fin de nuit n'est pas pris pour « jusqu'au matin »", () => {
+  const morning = new Date(NOW);
+  morning.setDate(morning.getDate() + 1);
+  morning.setHours(7, 0, 0, 0);
+  const hass = makeHass({
+    room: { period: "night", lights_override_until: morning.toISOString(), overrides_until_morning: [] },
+  });
+  const view = buildView(hass, config, NOW);
+  assert.equal(view.now.text, "Lumière en manuel jusqu'à 07:00");
+  assert.equal(view.panes[0].hint, "Manuel jusqu'à 07:00");
+});
+
+test("clim en simple ventilation : Lumina ne la touche pas", () => {
+  const hass = makeHass({
+    climate: true,
+    room: { climate_running: false },
+    states: { "climate.chambre": { state: "fan_only", attributes: { friendly_name: "Clim chambre" } } },
+  });
+  const climate = buildView(hass, config, NOW).panes[2];
+  assert.equal(climate.value, "Ventilation");
+  assert.equal(climate.hint, "En ventilation, Lumina ne la touche pas");
+});
+
+test("détecteur indisponible : la note explique que la pièce reste occupée", () => {
+  const hass = makeHass({ states: { "binary_sensor.fp2_chambre": { state: "unavailable", attributes: {} } } });
+  const view = buildView(hass, config, NOW);
+  assert.equal(view.now.text, "Pièce occupée");
+  assert.equal(view.notes[0], "Détecteur indisponible, la pièce reste occupée");
+
+  // Un seul détecteur muet sur deux : rien à signaler
+  hass.states[ENTITIES.room_state].attributes.presence_sensors = ["binary_sensor.fp2_chambre", "binary_sensor.pir"];
+  hass.states["binary_sensor.pir"] = { entity_id: "binary_sensor.pir", state: "on", attributes: {} };
+  assert.deepEqual(buildView(hass, config, NOW).notes, []);
+
+  // Tous muets
+  hass.states["binary_sensor.pir"].state = "unknown";
+  assert.equal(buildView(hass, config, NOW).notes[0], "Détecteurs indisponibles, la pièce reste occupée");
+});
+
 test("ventilateurs pendant la clim : brassage ou arrêt", () => {
   const mix = makeHass({ climate: true, room: { fans_with_climate: "mix" } });
   assert.equal(buildView(mix, config, NOW).panes[1].hint, "Brassage à 33 % pendant la clim");
