@@ -1,4 +1,4 @@
-/*! Lumina Card 0.2.1 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.2.2 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -43,6 +43,7 @@ const fr = {
     warning: "La lumière s'éteint dans {t}",
     manual: "{what} en manuel jusqu'à {h}",
     manual_morning: "{what} en manuel jusqu'au matin ({h})",
+    manual_mixed: "{what} en manuel jusqu'à {h}, {rest} jusqu'au matin",
     w_lights: "lumière",
     w_fans: "ventilateur",
     w_climate: "clim",
@@ -61,6 +62,8 @@ const fr = {
     vacant: "Pièce vide",
     vacant_night: "Pièce vide, mode nuit",
     // Notes secondaires
+    note_sensor_unavailable: "Détecteur indisponible, la pièce reste occupée",
+    note_sensors_unavailable: "Détecteurs indisponibles, la pièce reste occupée",
     note_forced_night: "Nuit forcée jusqu'à {h}",
     note_lights_paused: "Automatisme des lumières en pause",
     note_fans_paused: "Automatisme du ventilateur en pause",
@@ -87,6 +90,7 @@ const fr = {
     pill_manual: "Manuel",
     pill_paused: "Pause",
     hint_manual: "Manuel jusqu'à {h}",
+    hint_manual_morning: "Manuel jusqu'au matin",
     hint_paused: "Lumina ne la gère plus",
     hint_paused_fans: "Lumina ne le gère plus",
     hint_lights_off_after: "S'éteint {d} après ton départ",
@@ -111,6 +115,7 @@ const fr = {
     hint_climate_untouched: "Lumina la laisse tourner",
     hint_climate_untouched_night: "Lumina la laisse tourner la nuit",
     hint_climate_never_on: "Lumina ne l'allume jamais",
+    hint_climate_fan_only: "En ventilation, Lumina ne la touche pas",
     hint_climate_restore: "Rétablie à ton retour",
     hvac_cool: "Froid",
     hvac_heat: "Chauffage",
@@ -182,7 +187,7 @@ const fr = {
     o_fans_off: "Arrêtés",
     s_fan_mix_speed: "Vitesse de brassage",
     s_night_override_until_morning: "Contrôle manuel jusqu'au matin",
-    h_night_override_until_morning: "La nuit, un geste manuel tient jusqu'à la fin de la nuit",
+    h_night_override_until_morning: "La nuit, une extinction à la main tient jusqu'au matin ; un allumage garde la durée réglée",
     s_temperature_threshold: "Démarre à",
     s_night_temperature_threshold: "Démarre à, la nuit",
     s_fan_min_speed: "Vitesse au démarrage",
@@ -214,6 +219,7 @@ const en = {
     warning: "Light turns off in {t}",
     manual: "{what} on manual until {h}",
     manual_morning: "{what} on manual until morning ({h})",
+    manual_mixed: "{what} on manual until {h}, {rest} until morning",
     w_lights: "light",
     w_fans: "fan",
     w_climate: "AC",
@@ -231,6 +237,8 @@ const en = {
     occupied_night: "Room occupied, night mode",
     vacant: "Room empty",
     vacant_night: "Room empty, night mode",
+    note_sensor_unavailable: "Presence sensor unavailable, the room stays occupied",
+    note_sensors_unavailable: "Presence sensors unavailable, the room stays occupied",
     note_forced_night: "Night forced until {h}",
     note_lights_paused: "Light automation paused",
     note_fans_paused: "Fan automation paused",
@@ -255,6 +263,7 @@ const en = {
     pill_manual: "Manual",
     pill_paused: "Paused",
     hint_manual: "Manual until {h}",
+    hint_manual_morning: "Manual until morning",
     hint_paused: "Not managed by Lumina",
     hint_paused_fans: "Not managed by Lumina",
     hint_lights_off_after: "Turns off {d} after you leave",
@@ -279,6 +288,7 @@ const en = {
     hint_climate_untouched: "Lumina leaves it running",
     hint_climate_untouched_night: "Lumina leaves it running at night",
     hint_climate_never_on: "Lumina never turns it on",
+    hint_climate_fan_only: "In fan mode, Lumina leaves it alone",
     hint_climate_restore: "Restored when you return",
     hvac_cool: "Cool",
     hvac_heat: "Heat",
@@ -346,7 +356,7 @@ const en = {
     o_fans_off: "Off",
     s_fan_mix_speed: "Circulation speed",
     s_night_override_until_morning: "Manual control until morning",
-    h_night_override_until_morning: "At night, a manual change holds until the night ends",
+    h_night_override_until_morning: "At night, turning off by hand holds until morning; turning on keeps the set duration",
     s_temperature_threshold: "Starts at",
     s_night_temperature_threshold: "Starts at, at night",
     s_fan_min_speed: "Starting speed",
@@ -520,12 +530,21 @@ function buildView(hass, config, now, pending = {}) {
     const lightsPaused = hasLights && lightsAuto === "paused";
     const fansPaused = hasFans && fansAuto === "paused";
     const climatePaused = hasClimate && climateAuto === "paused";
+    // Contrôles manuels « jusqu'au matin » : publiés par Lumina depuis 0.9.2,
+    // déduits de l'heure de fin de nuit avant.
+    const morningKinds = a.overrides_until_morning;
+    const untilMorning = (kind, until) => Array.isArray(morningKinds)
+        ? morningKinds.includes(kind)
+        : night && isOn(hass, room.night_override_until_morning) && !!until && isNightEnd(hass, room.night_end, until);
     const groups = [
-        { has: hasLights, auto: lightsAuto, until: lightsManualUntil, word: t("w_lights") },
-        { has: hasFans, auto: fansAuto, until: fansManualUntil, word: t("w_fans") },
-        { has: hasClimate, auto: climateAuto, until: climateManualUntil, word: t("w_climate") },
-    ].filter((g) => g.has);
+        { kind: "lights", has: hasLights, auto: lightsAuto, until: lightsManualUntil, word: t("w_lights") },
+        { kind: "fans", has: hasFans, auto: fansAuto, until: fansManualUntil, word: t("w_fans") },
+        { kind: "climate", has: hasClimate, auto: climateAuto, until: climateManualUntil, word: t("w_climate") },
+    ]
+        .filter((g) => g.has)
+        .map((g) => ({ ...g, morning: g.auto === "manual" && untilMorning(g.kind, g.until) }));
     const manual = groups.filter((g) => g.auto === "manual");
+    const morningOf = (kind) => groups.some((g) => g.kind === kind && g.morning);
     const climateOn = climateIds.some((id) => isClimateOn(hass.states[id]));
     // Échéances en pièce vide : extinctions, puis action sur la clim
     const scheduled = [];
@@ -548,17 +567,27 @@ function buildView(hass, config, now, pending = {}) {
         ticking = true;
     }
     else if (manual.length) {
-        const until = manual
+        // Les groupes à durée réglée d'abord, avec leur échéance la plus proche,
+        // puis ceux qui tiennent jusqu'au matin.
+        const timed = manual.filter((g) => !g.morning);
+        const morning = manual.filter((g) => g.morning);
+        const earliest = (list) => list
             .map((g) => g.until)
             .filter((d) => d !== null)
             .sort((x, y) => x.getTime() - y.getTime())[0];
-        const morning = night && isOn(hass, room.night_override_until_morning) && !!until
-            && isNightEnd(hass, room.night_end, until);
+        const until = earliest(timed.length ? timed : morning);
+        const and = t("w_and");
+        const h = until ? clock(until) : "…";
         line = {
-            text: t(morning ? "manual_morning" : "manual", {
-                what: joinWords(manual.map((g) => g.word), t("w_and")),
-                h: until ? clock(until) : "…",
-            }),
+            text: !timed.length
+                ? t("manual_morning", { what: joinWords(morning.map((g) => g.word), and), h })
+                : morning.length
+                    ? t("manual_mixed", {
+                        what: joinWords(timed.map((g) => g.word), and),
+                        h,
+                        rest: joinWords(morning.map((g) => g.word), and).toLowerCase(),
+                    })
+                    : t("manual", { what: joinWords(timed.map((g) => g.word), and), h }),
             icon: "hand",
             tone: "manual",
             action: room.resume ? { kind: "resume", label: t("resume") } : undefined,
@@ -596,6 +625,11 @@ function buildView(hass, config, now, pending = {}) {
             : { text: t("vacant"), icon: "home", tone: "calm" };
     }
     // Notes secondaires, par ordre d'importance
+    const sensors = a.presence_sensors ?? [];
+    const sensorStates = sensors.map((e) => hass.states[e]).filter((s) => !!s);
+    if (occupied && sensorStates.length && sensorStates.every((s) => s.state === "unavailable" || s.state === "unknown")) {
+        notes.push(t(sensors.length > 1 ? "note_sensors_unavailable" : "note_sensor_unavailable"));
+    }
     if (forcedNight)
         notes.push(t("note_forced_night", { h: forcedUntil ? clock(forcedUntil) : "…" }));
     if (line.action?.kind !== "enable") {
@@ -616,12 +650,13 @@ function buildView(hass, config, now, pending = {}) {
         notes.push(t("note_no_night_light"));
     }
     const panes = [];
+    const manualHint = (until, kind) => morningOf(kind) ? t("hint_manual_morning") : t("hint_manual", { h: until ? clock(until) : "…" });
     if (hasLights)
-        panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, lightsManualUntil, night, language, clock, pending.lights));
+        panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), night, language, pending.lights));
     if (hasFans)
-        panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, fansManualUntil, night, language, clock, pending.fans));
+        panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), night, language, pending.fans));
     if (hasClimate)
-        panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, climateManualUntil, night, clock, pending.climate));
+        panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), night, pending.climate));
     return {
         status: "ok",
         name,
@@ -667,7 +702,7 @@ function lightDimmable(state) {
     const modes = state.attributes.supported_color_modes ?? [];
     return modes.some((m) => m !== "onoff");
 }
-function lightsPane(hass, room, a, t, ids, auto, manualUntil, night, language, clock, pending) {
+function lightsPane(hass, room, a, t, ids, auto, manualHint, night, language, pending) {
     const states = ids.map((id) => hass.states[id]);
     const onStates = states.filter((s) => s?.state === "on");
     const levels = onStates.map(lightLevel).filter((v) => v !== null);
@@ -685,7 +720,7 @@ function lightsPane(hass, room, a, t, ids, auto, manualUntil, night, language, c
     if (auto === "paused")
         hint = t("hint_paused");
     else if (auto === "manual")
-        hint = t("hint_manual", { h: manualUntil ? clock(manualUntil) : "…" });
+        hint = manualHint;
     else if (on) {
         const delay = num(hass, night ? room.night_light_off_delay ?? room.light_off_delay : room.light_off_delay);
         hint = delay !== null ? t("hint_lights_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
@@ -702,7 +737,7 @@ function lightsPane(hass, room, a, t, ids, auto, manualUntil, night, language, c
     }
     return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, hint, auto, autoEntity: room.auto_lights };
 }
-function fansPane(hass, room, a, t, ids, auto, manualUntil, night, language, clock, pending) {
+function fansPane(hass, room, a, t, ids, auto, manualHint, night, language, pending) {
     const states = ids.map((id) => hass.states[id]);
     const onStates = states.filter((s) => s?.state === "on");
     const speeds = onStates
@@ -721,7 +756,7 @@ function fansPane(hass, room, a, t, ids, auto, manualUntil, night, language, clo
     if (auto === "paused")
         hint = t("hint_paused_fans");
     else if (auto === "manual")
-        hint = t("hint_manual", { h: manualUntil ? clock(manualUntil) : "…" });
+        hint = manualHint;
     else if (a.climate_running && a.fans_with_climate === "mix") {
         const speed = num(hass, room.fan_mix_speed);
         hint = speed !== null ? t("hint_fans_mix", { v: formatNumber(speed, language) }) : t("hint_fans_mix_plain");
@@ -752,7 +787,7 @@ function fansPane(hass, room, a, t, ids, auto, manualUntil, night, language, clo
     const step = Math.max(1, Number(states.find((s) => s?.attributes.percentage_step)?.attributes.percentage_step ?? 1));
     return { kind: "fans", title: t("fans"), entities: ids, on, level, step, value, hint, auto, autoEntity: room.auto_fans, spin };
 }
-function climatePane(hass, room, a, t, ids, auto, manualUntil, night, clock, pending) {
+function climatePane(hass, room, a, t, ids, auto, manualHint, night, pending) {
     const states = ids.map((id) => hass.states[id]).filter((s) => !!s);
     const active = states.filter(isClimateOn);
     const main = active[0] ?? states[0];
@@ -784,11 +819,14 @@ function climatePane(hass, room, a, t, ids, auto, manualUntil, night, clock, pen
     if (auto === "paused")
         hint = t("hint_paused");
     else if (auto === "manual")
-        hint = t("hint_manual", { h: manualUntil ? clock(manualUntil) : "…" });
+        hint = manualHint;
     else if (a.climate_vacant_applied)
         hint = t("hint_climate_restore");
     else if (!on)
         hint = t("hint_climate_never_on");
+    // Lumina ne touche pas une clim en simple ventilation (depuis 0.9.0)
+    else if (mode === "fan_only")
+        hint = t("hint_climate_fan_only");
     else if (!action || action === "none")
         hint = t(night ? "hint_climate_untouched_night" : "hint_climate_untouched");
     else if (delay === null)
@@ -2132,5 +2170,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.2.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.2.2"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }
