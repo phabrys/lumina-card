@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4 — 2026-10-22
+
+- README : captures d'écran mises à jour (nouveaux libellés des réglages de la lumière).
+
 ## 0.3.3 — 2026-10-22
 
 - Réglages : sous « Extinction à la main la nuit », l'aide décrit l'option choisie (Manuel, Salon ou Chambre) au lieu de ne parler que de Chambre.
