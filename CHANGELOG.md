@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3 — 2026-10-22
+
+- Réglages : sous « Extinction à la main la nuit », l'aide décrit l'option choisie (Manuel, Salon ou Chambre) au lieu de ne parler que de Chambre.
+
 ## 0.3.2 — 2026-10-22
 
 - Réglages : « Lumières à allumer » et « Ventilateurs à allumer » deviennent « Si une lumière est déjà allumée » et « Si un ventilateur tourne déjà », avec les choix « Allumer les autres » ou « Ne rien toucher », comme dans Lumina 0.10.3.

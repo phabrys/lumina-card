@@ -669,6 +669,8 @@ export interface SettingRow {
   help?: string;
   /** Libellés des options d'une liste de choix. */
   options?: Record<string, string>;
+  /** Aide propre à l'option choisie, à la place de `help`. */
+  optionHelp?: Record<string, string>;
 }
 
 export interface SettingTab {
@@ -686,8 +688,11 @@ const FANS_WITH_CLIMATE: Record<string, StringKey> = { normal: "o_fans_normal", 
 const BEDTIME: Record<string, StringKey> = {
   override: "o_bedtime_override", until_vacant: "o_bedtime_until_vacant", until_wake: "o_bedtime_until_wake",
 };
+const BEDTIME_HELP: Record<string, StringKey> = {
+  override: "h_bedtime_override", until_vacant: "h_bedtime_until_vacant", until_wake: "h_bedtime_until_wake",
+};
 
-type RowSpec = [LuminaKey, SettingKind, StringKey, StringKey?, Record<string, StringKey>?];
+type RowSpec = [LuminaKey, SettingKind, StringKey, StringKey?, Record<string, StringKey>?, Record<string, StringKey>?];
 
 const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowSpec[] }[] = [
   {
@@ -733,7 +738,7 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
       ["sleeping", "switch", "s_sleeping", "h_sleeping"],
       ["night_start", "time", "s_night_start", "h_night_window"],
       ["night_end", "time", "s_night_end"],
-      ["bedtime_gesture", "select", "s_bedtime_gesture", "h_bedtime_gesture", BEDTIME],
+      ["bedtime_gesture", "select", "s_bedtime_gesture", undefined, BEDTIME, BEDTIME_HELP],
       ["sleep_brightness", "number", "s_sleep_brightness", "h_sleep_brightness"],
       // Lumina avant 0.10
       ["night_override_until_morning", "switch", "s_night_override_until_morning", "h_night_override_until_morning"],
@@ -755,11 +760,16 @@ export function settingTabs(room: RoomEntities, t: Translate): SettingTab[] {
     icon: tab.icon,
     rows: tab.rows
       .filter(([key]) => room[key])
-      .map(([key, kind, label, help, options]) => ({
+      .map(([key, kind, label, help, options, optionHelp]) => ({
         key, entity: room[key]!, kind, label: t(label), help: help ? t(help) : undefined,
-        options: options && Object.fromEntries(Object.entries(options).map(([option, text]) => [option, t(text)])),
+        options: options && translateValues(options, t),
+        optionHelp: optionHelp && translateValues(optionHelp, t),
       })),
   })).filter((tab) => tab.rows.length > 0);
+}
+
+function translateValues(keys: Record<string, StringKey>, t: Translate): Record<string, string> {
+  return Object.fromEntries(Object.entries(keys).map(([option, key]) => [option, t(key)]));
 }
 
 /** Délai lisible : « 45 s », « 2 min », « 1 h 30 ». */
