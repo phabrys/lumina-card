@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.6 — 2026-10-22
+
+- Réglages, onglet Nuit : le réglage reprend le titre « Extinction à la main la nuit », comme dans Lumina, car il vaut aussi pour les ventilateurs d'une pièce sans lumière. Les choix restent Durée réglée, Jusqu'au départ et Jusqu'au réveil.
+
 ## 0.3.5 — 2026-10-22
 
 - Réglages, onglet Nuit : « Extinction à la main la nuit » devient « Lumière éteinte à la main la nuit », avec les choix **Durée réglée**, **Jusqu'au départ** et **Jusqu'au réveil** au lieu de Manuel, Salon et Chambre.
