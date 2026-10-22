@@ -1,4 +1,4 @@
-/*! Lumina Card 0.3.2 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.3.3 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -210,7 +210,9 @@ const fr = {
     s_sleeping: "Sommeil",
     h_sleeping: "Pas d'allumage, gestes tenus jusqu'au réveil. Fin de nuit au plus tard",
     s_bedtime_gesture: "Extinction à la main la nuit",
-    h_bedtime_gesture: "Chambre : le dormeur que le détecteur perd ne rallume rien",
+    h_bedtime_override: "Pas de sommeil : la durée du contrôle manuel s'applique",
+    h_bedtime_until_vacant: "Sommeil jusqu'à ce que la pièce se vide",
+    h_bedtime_until_wake: "Sommeil jusqu'au réveil : le dormeur que le détecteur perd ne rallume rien",
     o_bedtime_override: "Manuel",
     o_bedtime_until_vacant: "Salon",
     o_bedtime_until_wake: "Chambre",
@@ -406,7 +408,9 @@ const en = {
     s_sleeping: "Sleep",
     h_sleeping: "No turn-on, manual changes held until wake-up. Ends at night's end at the latest",
     s_bedtime_gesture: "Turning off by hand at night",
-    h_bedtime_gesture: "Bedroom: a sleeper the sensor loses turns nothing back on",
+    h_bedtime_override: "No sleep: the manual control duration applies",
+    h_bedtime_until_vacant: "Asleep until the room empties",
+    h_bedtime_until_wake: "Asleep until waking up: a sleeper the sensor loses turns nothing back on",
     o_bedtime_override: "Manual",
     o_bedtime_until_vacant: "Living room",
     o_bedtime_until_wake: "Bedroom",
@@ -981,6 +985,9 @@ const FANS_WITH_CLIMATE = { normal: "o_fans_normal", mix: "o_fans_mix", off: "o_
 const BEDTIME = {
     override: "o_bedtime_override", until_vacant: "o_bedtime_until_vacant", until_wake: "o_bedtime_until_wake",
 };
+const BEDTIME_HELP = {
+    override: "h_bedtime_override", until_vacant: "h_bedtime_until_vacant", until_wake: "h_bedtime_until_wake",
+};
 const TABS = [
     {
         id: "lights", label: "tab_lights", icon: "lightbulb", rows: [
@@ -1025,7 +1032,7 @@ const TABS = [
             ["sleeping", "switch", "s_sleeping", "h_sleeping"],
             ["night_start", "time", "s_night_start", "h_night_window"],
             ["night_end", "time", "s_night_end"],
-            ["bedtime_gesture", "select", "s_bedtime_gesture", "h_bedtime_gesture", BEDTIME],
+            ["bedtime_gesture", "select", "s_bedtime_gesture", undefined, BEDTIME, BEDTIME_HELP],
             ["sleep_brightness", "number", "s_sleep_brightness", "h_sleep_brightness"],
             // Lumina avant 0.10
             ["night_override_until_morning", "switch", "s_night_override_until_morning", "h_night_override_until_morning"],
@@ -1046,11 +1053,15 @@ function settingTabs(room, t) {
         icon: tab.icon,
         rows: tab.rows
             .filter(([key]) => room[key])
-            .map(([key, kind, label, help, options]) => ({
+            .map(([key, kind, label, help, options, optionHelp]) => ({
             key, entity: room[key], kind, label: t(label), help: help ? t(help) : undefined,
-            options: options && Object.fromEntries(Object.entries(options).map(([option, text]) => [option, t(text)])),
+            options: options && translateValues(options, t),
+            optionHelp: optionHelp && translateValues(optionHelp, t),
         })),
     })).filter((tab) => tab.rows.length > 0);
+}
+function translateValues(keys, t) {
+    return Object.fromEntries(Object.entries(keys).map(([option, key]) => [option, t(key)]));
 }
 /** Délai lisible : « 45 s », « 2 min », « 1 h 30 ». */
 function formatDelay(seconds, t) {
@@ -1880,7 +1891,8 @@ class LuminaCard extends BaseElement {
     }
     _renderRow(row, language, t) {
         const state = this._hass.states[row.entity];
-        const text = `<div class="row-text"><div class="row-label">${esc(row.label)}</div>${row.help ? `<div class="row-help">${esc(row.help)}</div>` : ""}</div>`;
+        const help = (state && row.optionHelp?.[state.state]) ?? row.help;
+        const text = `<div class="row-text"><div class="row-label">${esc(row.label)}</div>${help ? `<div class="row-help">${esc(help)}</div>` : ""}</div>`;
         if (!state || state.state === "unavailable") {
             return `<div class="row">${text}<span class="hint">—</span></div>`;
         }
@@ -2311,5 +2323,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.3.2"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.3.3"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

@@ -330,8 +330,9 @@ export class LuminaCard extends BaseElement {
 
   private _renderRow(row: SettingRow, language: string, t: ReturnType<typeof translator>): string {
     const state = this._hass!.states[row.entity];
+    const help = (state && row.optionHelp?.[state.state]) ?? row.help;
     const text = `<div class="row-text"><div class="row-label">${esc(row.label)}</div>${
-      row.help ? `<div class="row-help">${esc(row.help)}</div>` : ""
+      help ? `<div class="row-help">${esc(help)}</div>` : ""
     }</div>`;
     if (!state || state.state === "unavailable") {
       return `<div class="row">${text}<span class="hint">—</span></div>`;
