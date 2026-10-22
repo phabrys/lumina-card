@@ -350,7 +350,7 @@ test("réglages : onglet clim, ventilateurs à allumer, contrôle jusqu'au matin
   ]);
   assert.equal(climate.rows[1].options.setback, "Modérer");
   const fans = tabs.find((tab) => tab.id === "fans");
-  assert.deepEqual(fans.rows.at(-1).options, { all: "Tous", any: "Si aucun allumé" });
+  assert.deepEqual(fans.rows.at(-1).options, { all: "Allumer les autres", any: "Ne rien toucher" });
   assert.ok(tabs.find((tab) => tab.id === "night").rows.some((r) => r.key === "night_override_until_morning"));
 });
 

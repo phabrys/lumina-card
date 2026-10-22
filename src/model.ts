@@ -679,7 +679,6 @@ export interface SettingTab {
 }
 
 const ALL_ANY: Record<string, StringKey> = { all: "o_all", any: "o_any" };
-const ALL_ANY_M: Record<string, StringKey> = { all: "o_all_m", any: "o_any_m" };
 const CLIMATE_ACTIONS: Record<string, StringKey> = {
   off: "o_climate_off", eco: "o_climate_eco", setback: "o_climate_setback", none: "o_climate_none",
 };
@@ -715,7 +714,7 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
       ["fan_speed_range", "number", "s_fan_speed_range", "h_fan_speed_range"],
       ["fan_off_delay", "number", "s_fan_off_delay"],
       ["night_fan_off_delay", "number", "s_night_fan_off_delay"],
-      ["fans_mode", "select", "s_fans_mode", undefined, ALL_ANY_M],
+      ["fans_mode", "select", "s_fans_mode", undefined, ALL_ANY],
     ],
   },
   {
