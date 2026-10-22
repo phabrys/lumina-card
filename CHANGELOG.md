@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 — 2026-10-22
+
+- Réglages : « Lumières à allumer » et « Ventilateurs à allumer » deviennent « Si une lumière est déjà allumée » et « Si un ventilateur tourne déjà », avec les choix « Allumer les autres » ou « Ne rien toucher », comme dans Lumina 0.10.3.
+
 ## 0.3.1 — 2026-10-21
 
 - Réveil du matin : avec Lumina 0.10.2, la note et l'indication du panneau donnent l'heure de fin du répit (« Réveil : lumière gardée éteinte jusqu'à 07:30 ») au lieu de « jusqu'à ton départ ».

@@ -1,4 +1,4 @@
-/*! Lumina Card 0.3.1 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.3.2 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -186,12 +186,10 @@ const fr = {
     h_light_warning_duration: "La lumière baisse d'abord. 0 : extinction directe",
     s_daylight_off_lux: "Éteindre au-dessus de",
     h_daylight_off_lux: "Lumière du jour, à régler au-dessus de la mesure lampe allumée. 0 : désactivé",
-    s_lights_mode: "Lumières à allumer",
-    o_all: "Toutes",
-    o_any: "Si aucune allumée",
-    s_fans_mode: "Ventilateurs à allumer",
-    o_all_m: "Tous",
-    o_any_m: "Si aucun allumé",
+    s_lights_mode: "Si une lumière est déjà allumée",
+    s_fans_mode: "Si un ventilateur tourne déjà",
+    o_all: "Allumer les autres",
+    o_any: "Ne rien toucher",
     s_climate_vacant_day: "En pièce vide, le jour",
     h_climate_vacant: "Modérer : consigne relevée de 2 °C (abaissée en chauffage)",
     s_climate_vacant_night: "En pièce vide, la nuit",
@@ -384,12 +382,10 @@ const en = {
     h_light_warning_duration: "Dims first. 0: turn off directly",
     s_daylight_off_lux: "Turn off above",
     h_daylight_off_lux: "Daylight; set above the reading with the lamp on. 0: off",
-    s_lights_mode: "Lights to turn on",
-    o_all: "All",
-    o_any: "If none is on",
-    s_fans_mode: "Fans to turn on",
-    o_all_m: "All",
-    o_any_m: "If none is on",
+    s_lights_mode: "If a light is already on",
+    s_fans_mode: "If a fan is already running",
+    o_all: "Turn on the others",
+    o_any: "Leave as is",
     s_climate_vacant_day: "Empty room, by day",
     h_climate_vacant: "Ease off: setpoint raised by 2 °C (lowered when heating)",
     s_climate_vacant_night: "Empty room, at night",
@@ -978,7 +974,6 @@ function ambient(hass, room, a, t, language) {
     return items;
 }
 const ALL_ANY = { all: "o_all", any: "o_any" };
-const ALL_ANY_M = { all: "o_all_m", any: "o_any_m" };
 const CLIMATE_ACTIONS = {
     off: "o_climate_off", eco: "o_climate_eco", setback: "o_climate_setback", none: "o_climate_none",
 };
@@ -1011,7 +1006,7 @@ const TABS = [
             ["fan_speed_range", "number", "s_fan_speed_range", "h_fan_speed_range"],
             ["fan_off_delay", "number", "s_fan_off_delay"],
             ["night_fan_off_delay", "number", "s_night_fan_off_delay"],
-            ["fans_mode", "select", "s_fans_mode", undefined, ALL_ANY_M],
+            ["fans_mode", "select", "s_fans_mode", undefined, ALL_ANY],
         ],
     },
     {
@@ -2316,5 +2311,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.3.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.3.2"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }
