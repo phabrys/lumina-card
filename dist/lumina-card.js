@@ -1,4 +1,4 @@
-/*! Lumina Card 0.3.4 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.3.5 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -209,13 +209,13 @@ const fr = {
     h_night_override_until_morning: "La nuit, une extinction à la main tient jusqu'au matin ; un allumage garde la durée réglée",
     s_sleeping: "Sommeil",
     h_sleeping: "Pas d'allumage, gestes tenus jusqu'au réveil. Fin de nuit au plus tard",
-    s_bedtime_gesture: "Extinction à la main la nuit",
-    h_bedtime_override: "Pas de sommeil : la durée du contrôle manuel s'applique",
+    s_bedtime_gesture: "Lumière éteinte à la main la nuit",
+    h_bedtime_override: "Le contrôle manuel tient la durée réglée",
     h_bedtime_until_vacant: "Sommeil jusqu'à ce que la pièce se vide",
-    h_bedtime_until_wake: "Sommeil jusqu'au réveil : le dormeur que le détecteur perd ne rallume rien",
-    o_bedtime_override: "Manuel",
-    o_bedtime_until_vacant: "Salon",
-    o_bedtime_until_wake: "Chambre",
+    h_bedtime_until_wake: "Sommeil jusqu'au réveil, même si le détecteur perd le dormeur",
+    o_bedtime_override: "Durée réglée",
+    o_bedtime_until_vacant: "Jusqu'au départ",
+    o_bedtime_until_wake: "Jusqu'au réveil",
     s_sleep_brightness: "Veilleuse en sommeil",
     h_sleep_brightness: "0 % : pas d'allumage pendant le sommeil",
     s_temperature_threshold: "Démarre à",
@@ -407,13 +407,13 @@ const en = {
     h_night_override_until_morning: "At night, turning off by hand holds until morning; turning on keeps the set duration",
     s_sleeping: "Sleep",
     h_sleeping: "No turn-on, manual changes held until wake-up. Ends at night's end at the latest",
-    s_bedtime_gesture: "Turning off by hand at night",
-    h_bedtime_override: "No sleep: the manual control duration applies",
+    s_bedtime_gesture: "Light turned off by hand at night",
+    h_bedtime_override: "Manual control lasts the set duration",
     h_bedtime_until_vacant: "Asleep until the room empties",
-    h_bedtime_until_wake: "Asleep until waking up: a sleeper the sensor loses turns nothing back on",
-    o_bedtime_override: "Manual",
-    o_bedtime_until_vacant: "Living room",
-    o_bedtime_until_wake: "Bedroom",
+    h_bedtime_until_wake: "Asleep until waking up, even if the sensor loses the sleeper",
+    o_bedtime_override: "Set duration",
+    o_bedtime_until_vacant: "Until leaving",
+    o_bedtime_until_wake: "Until waking",
     s_sleep_brightness: "Night light while asleep",
     h_sleep_brightness: "0 %: no turn-on while asleep",
     s_temperature_threshold: "Starts at",
@@ -2323,5 +2323,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.3.4"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.3.5"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }
