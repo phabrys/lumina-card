@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5 — 2026-10-22
+
+- Réglages, onglet Nuit : « Extinction à la main la nuit » devient « Lumière éteinte à la main la nuit », avec les choix **Durée réglée**, **Jusqu'au départ** et **Jusqu'au réveil** au lieu de Manuel, Salon et Chambre.
+- Démo : horloge figée à 17:30 (`?now=HH:MM` pour une autre heure), pour des heures rondes sur les captures du README.
+
 ## 0.3.4 — 2026-10-22
 
 - README : captures d'écran mises à jour (nouveaux libellés des réglages de la lumière).

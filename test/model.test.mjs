@@ -462,7 +462,7 @@ test("Lumina 0.10 : réglages du sommeil dans l'onglet Nuit", () => {
   assert.deepEqual(night.rows.map((r) => r.key), [
     "forced_night", "sleeping", "night_start", "night_end", "bedtime_gesture", "sleep_brightness",
   ]);
-  assert.deepEqual(night.rows[4].options, { override: "Manuel", until_vacant: "Salon", until_wake: "Chambre" });
+  assert.deepEqual(night.rows[4].options, { override: "Durée réglée", until_vacant: "Jusqu'au départ", until_wake: "Jusqu'au réveil" });
   assert.equal(night.rows[4].help, undefined);
   assert.equal(night.rows[4].optionHelp.until_vacant, "Sommeil jusqu'à ce que la pièce se vide");
 });
