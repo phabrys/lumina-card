@@ -1,4 +1,4 @@
-/*! Lumina Card 0.3.0 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.3.1 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -83,6 +83,7 @@ const fr = {
     note_sleep_until_vacant: "Se réveille quand la pièce se vide",
     note_sleep_entity: "Suit {name}",
     note_lights_held: "Lumière gardée éteinte jusqu'à ton départ",
+    note_lights_held_until: "Réveil : lumière gardée éteinte jusqu'à {h}",
     // Actions
     resume: "Rendre la main",
     enable: "Réactiver",
@@ -116,6 +117,7 @@ const fr = {
     hint_no_sleep_light: "Pas d'allumage pendant le sommeil",
     hint_sleep_night_light: "Veilleuse à {v} % pendant le sommeil",
     hint_lights_held: "Reste éteinte jusqu'à ton départ",
+    hint_lights_held_until: "Reste éteinte jusqu'à {h}",
     hint_daylight: "Lumière du jour suffisante",
     hint_fans_at: "Démarre à {v} °C",
     hint_fans_at_apparent: "Démarre à {v} °C ressentis",
@@ -285,6 +287,7 @@ const en = {
     note_sleep_until_vacant: "Wakes up when the room empties",
     note_sleep_entity: "Follows {name}",
     note_lights_held: "Light kept off until you leave",
+    note_lights_held_until: "Waking up: light kept off until {h}",
     resume: "Hand back",
     enable: "Turn back on",
     wake: "Wake up",
@@ -316,6 +319,7 @@ const en = {
     hint_no_sleep_light: "No turn-on while asleep",
     hint_sleep_night_light: "Night light at {v} % while asleep",
     hint_lights_held: "Stays off until you leave",
+    hint_lights_held_until: "Stays off until {h}",
     hint_daylight: "Enough daylight",
     hint_fans_at: "Starts at {v} °C",
     hint_fans_at_apparent: "Starts at {v} °C feels-like",
@@ -733,8 +737,11 @@ function buildView(hass, config, now, pending = {}) {
     }
     if (hasLights && a.daylight_locked)
         notes.push(t("note_daylight"));
-    if (hasLights && a.lights_held && !lightsPaused)
-        notes.push(t("note_lights_held"));
+    if (hasLights && a.lights_held && !lightsPaused) {
+        // Répit du réveil : jusqu'à une heure précise depuis Lumina 0.10.2
+        const held = parseDate(a.wake_hold_until);
+        notes.push(held ? t("note_lights_held_until", { h: clock(held) }) : t("note_lights_held"));
+    }
     if (hasLights && night && !sleeping && !lightsPaused && num(hass, room.night_brightness) === 0) {
         notes.push(t("note_no_night_light"));
     }
@@ -819,8 +826,10 @@ function lightsPane(hass, room, a, t, ids, auto, manualHint, { night, sleeping }
         const delay = num(hass, night ? room.night_light_off_delay ?? room.light_off_delay : room.light_off_delay);
         hint = delay !== null ? t("hint_lights_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
     }
-    else if (a.lights_held)
-        hint = t("hint_lights_held");
+    else if (a.lights_held) {
+        const held = parseDate(a.wake_hold_until);
+        hint = held ? t("hint_lights_held_until", { h: formatClock(held, language) }) : t("hint_lights_held");
+    }
     else if (sleeping) {
         const nightLight = num(hass, room.sleep_brightness);
         hint = nightLight ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) }) : t("hint_no_sleep_light");
@@ -2307,5 +2316,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.3.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.3.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

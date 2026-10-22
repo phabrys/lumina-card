@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — 2026-10-21
+
+- Réveil du matin : avec Lumina 0.10.2, la note et l'indication du panneau donnent l'heure de fin du répit (« Réveil : lumière gardée éteinte jusqu'à 07:30 ») au lieu de « jusqu'à ton départ ».
+
 ## 0.3.0 — 2026-10-21
 
 Suit le sommeil de Lumina 0.10.
