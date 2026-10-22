@@ -433,7 +433,7 @@ test("sommeil deviné au salon : réveil quand la pièce se vide", () => {
   assert.deepEqual(buildView(hass, config, NOW).notes, ["Se réveille quand la pièce se vide"]);
 });
 
-test("réveil du matin : lumière gardée éteinte jusqu'au départ", () => {
+test("Lumina 0.10.1 : lumière gardée éteinte jusqu'au départ", () => {
   const hass = makeHass({
     sleep: true,
     room: { lights_held: true },
@@ -443,6 +443,17 @@ test("réveil du matin : lumière gardée éteinte jusqu'au départ", () => {
   assert.equal(view.now.text, "Pièce occupée");
   assert.deepEqual(view.notes, ["Lumière gardée éteinte jusqu'à ton départ"]);
   assert.equal(view.panes[0].hint, "Reste éteinte jusqu'à ton départ");
+});
+
+test("réveil du matin : lumière gardée éteinte jusqu'à une heure précise", () => {
+  const hass = makeHass({
+    sleep: true,
+    room: { lights_held: true, wake_hold_until: inSeconds(1800) },
+    states: { "light.chambre": { state: "off", attributes: { supported_color_modes: ["color_temp"] } } },
+  });
+  const view = buildView(hass, config, NOW);
+  assert.match(view.notes[0], /^Réveil : lumière gardée éteinte jusqu'à \d\d:\d\d$/);
+  assert.match(view.panes[0].hint, /^Reste éteinte jusqu'à \d\d:\d\d$/);
 });
 
 test("Lumina 0.10 : réglages du sommeil dans l'onglet Nuit", () => {

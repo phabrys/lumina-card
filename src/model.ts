@@ -408,7 +408,11 @@ export function buildView(
     notes.push(t(applied === "off" ? "note_climate_off" : applied === "eco" ? "note_climate_eco" : "note_climate_setback"));
   }
   if (hasLights && a.daylight_locked) notes.push(t("note_daylight"));
-  if (hasLights && a.lights_held && !lightsPaused) notes.push(t("note_lights_held"));
+  if (hasLights && a.lights_held && !lightsPaused) {
+    // Répit du réveil : jusqu'à une heure précise depuis Lumina 0.10.2
+    const held = parseDate(a.wake_hold_until);
+    notes.push(held ? t("note_lights_held_until", { h: clock(held) }) : t("note_lights_held"));
+  }
   if (hasLights && night && !sleeping && !lightsPaused && num(hass, room.night_brightness) === 0) {
     notes.push(t("note_no_night_light"));
   }
@@ -505,7 +509,10 @@ function lightsPane(
   else if (on) {
     const delay = num(hass, night ? room.night_light_off_delay ?? room.light_off_delay : room.light_off_delay);
     hint = delay !== null ? t("hint_lights_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
-  } else if (a.lights_held) hint = t("hint_lights_held");
+  } else if (a.lights_held) {
+    const held = parseDate(a.wake_hold_until);
+    hint = held ? t("hint_lights_held_until", { h: formatClock(held, language) }) : t("hint_lights_held");
+  }
   else if (sleeping) {
     const nightLight = num(hass, room.sleep_brightness);
     hint = nightLight ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) }) : t("hint_no_sleep_light");
