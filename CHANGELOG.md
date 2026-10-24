@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 — 2026-10-24
+
+- Réglages, onglet Nuit : avec Lumina 0.11, les heures **Fin de la nuit, jours de repos** (week-end et jours fériés) et **Fin de la nuit, en vacances** apparaissent sous la fin de nuit, qui devient **Fin de la nuit, en semaine**. Chacune n'est affichée que si la pièce a sa source dans Lumina (Workday, calendrier de vacances).
+
 ## 0.3.6 — 2026-10-22
 
 - Réglages, onglet Nuit : le réglage reprend le titre « Extinction à la main la nuit », comme dans Lumina, car il vaut aussi pour les ventilateurs d'une pièce sans lumière. Les choix restent Durée réglée, Jusqu'au départ et Jusqu'au réveil.
