@@ -1,4 +1,4 @@
-/*! Lumina Card 0.3.6 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.4.0 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -230,6 +230,11 @@ const fr = {
     h_forced_night: "Jusqu'à la prochaine fin de nuit",
     s_night_start: "Début de la nuit",
     s_night_end: "Fin de la nuit",
+    s_night_end_workday: "Fin de la nuit, en semaine",
+    s_night_end_day_off: "Fin de la nuit, jours de repos",
+    h_night_end_day_off: "Week-end et jours fériés",
+    s_night_end_holidays: "Fin de la nuit, en vacances",
+    h_night_end_holidays: "Jours du calendrier de vacances",
     h_night_window: "Même heure au début et à la fin : pas de nuit",
     s_vacancy_confirmation: "Confirmation d'absence",
     h_vacancy_confirmation: "Ignore les coupures brèves du détecteur",
@@ -428,6 +433,11 @@ const en = {
     h_forced_night: "Until the next end of night",
     s_night_start: "Night starts",
     s_night_end: "Night ends",
+    s_night_end_workday: "Night ends, workdays",
+    s_night_end_day_off: "Night ends, days off",
+    h_night_end_day_off: "Weekends and public holidays",
+    s_night_end_holidays: "Night ends, holidays",
+    h_night_end_holidays: "Days in the holiday calendar",
     h_night_window: "Same start and end: no night",
     s_vacancy_confirmation: "Vacancy confirmation",
     h_vacancy_confirmation: "Ignores brief sensor dropouts",
@@ -1032,6 +1042,9 @@ const TABS = [
             ["sleeping", "switch", "s_sleeping", "h_sleeping"],
             ["night_start", "time", "s_night_start", "h_night_window"],
             ["night_end", "time", "s_night_end"],
+            // Lumina 0.11, avec Workday ou un calendrier de vacances
+            ["night_end_day_off", "time", "s_night_end_day_off", "h_night_end_day_off"],
+            ["night_end_holidays", "time", "s_night_end_holidays", "h_night_end_holidays"],
             ["bedtime_gesture", "select", "s_bedtime_gesture", undefined, BEDTIME, BEDTIME_HELP],
             ["sleep_brightness", "number", "s_sleep_brightness", "h_sleep_brightness"],
             // Lumina avant 0.10
@@ -1054,11 +1067,15 @@ function settingTabs(room, t) {
         rows: tab.rows
             .filter(([key]) => room[key])
             .map(([key, kind, label, help, options, optionHelp]) => ({
-            key, entity: room[key], kind, label: t(label), help: help ? t(help) : undefined,
+            key, entity: room[key], kind, label: t(rowLabel(room, key, label)), help: help ? t(help) : undefined,
             options: options && translateValues(options, t),
             optionHelp: optionHelp && translateValues(optionHelp, t),
         })),
     })).filter((tab) => tab.rows.length > 0);
+}
+/** Avec des fins de nuit de repos ou de vacances, la fin de nuit seule vaut pour la semaine. */
+function rowLabel(room, key, label) {
+    return key === "night_end" && (room.night_end_day_off || room.night_end_holidays) ? "s_night_end_workday" : label;
 }
 function translateValues(keys, t) {
     return Object.fromEntries(Object.entries(keys).map(([option, key]) => [option, t(key)]));
@@ -2323,5 +2340,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.3.6"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.4.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

@@ -52,7 +52,7 @@ export type LuminaKey =
   | "temperature_threshold" | "night_temperature_threshold" | "fan_min_speed" | "fan_speed_range"
   | "fan_off_delay" | "night_fan_off_delay" | "vacancy_confirmation" | "override_duration"
   | "climate_vacant_day" | "climate_vacant_night" | "climate_vacant_delay" | "fans_with_climate" | "fan_mix_speed"
-  | "sleeping" | "bedtime_gesture" | "sleep_brightness";
+  | "sleeping" | "bedtime_gesture" | "sleep_brightness" | "night_end_day_off" | "night_end_holidays";
 
 export type RoomEntities = Partial<Record<LuminaKey, string>>;
 
@@ -738,6 +738,9 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
       ["sleeping", "switch", "s_sleeping", "h_sleeping"],
       ["night_start", "time", "s_night_start", "h_night_window"],
       ["night_end", "time", "s_night_end"],
+      // Lumina 0.11, avec Workday ou un calendrier de vacances
+      ["night_end_day_off", "time", "s_night_end_day_off", "h_night_end_day_off"],
+      ["night_end_holidays", "time", "s_night_end_holidays", "h_night_end_holidays"],
       ["bedtime_gesture", "select", "s_bedtime_gesture", undefined, BEDTIME, BEDTIME_HELP],
       ["sleep_brightness", "number", "s_sleep_brightness", "h_sleep_brightness"],
       // Lumina avant 0.10
@@ -761,11 +764,16 @@ export function settingTabs(room: RoomEntities, t: Translate): SettingTab[] {
     rows: tab.rows
       .filter(([key]) => room[key])
       .map(([key, kind, label, help, options, optionHelp]) => ({
-        key, entity: room[key]!, kind, label: t(label), help: help ? t(help) : undefined,
+        key, entity: room[key]!, kind, label: t(rowLabel(room, key, label)), help: help ? t(help) : undefined,
         options: options && translateValues(options, t),
         optionHelp: optionHelp && translateValues(optionHelp, t),
       })),
   })).filter((tab) => tab.rows.length > 0);
+}
+
+/** Avec des fins de nuit de repos ou de vacances, la fin de nuit seule vaut pour la semaine. */
+function rowLabel(room: RoomEntities, key: LuminaKey, label: StringKey): StringKey {
+  return key === "night_end" && (room.night_end_day_off || room.night_end_holidays) ? "s_night_end_workday" : label;
 }
 
 function translateValues(keys: Record<string, StringKey>, t: Translate): Record<string, string> {

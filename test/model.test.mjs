@@ -466,3 +466,25 @@ test("Lumina 0.10 : réglages du sommeil dans l'onglet Nuit", () => {
   assert.equal(night.rows[4].help, undefined);
   assert.equal(night.rows[4].optionHelp.until_vacant, "Sommeil jusqu'à ce que la pièce se vide");
 });
+
+test("Lumina 0.11 : fins de nuit des jours de repos et de vacances", () => {
+  const nightRows = (states) => {
+    const view = buildView(makeHass({ sleep: true, states }), config, NOW);
+    return settingTabs(view.entities, translator("fr")).find((tab) => tab.id === "night").rows;
+  };
+  const rows = nightRows({
+    [ENTITIES.night_end_day_off]: { state: "07:30:00", attributes: {} },
+    [ENTITIES.night_end_holidays]: { state: "08:00:00", attributes: {} },
+  });
+  assert.deepEqual(rows.map((r) => [r.key, r.label, r.help]).slice(3, 6), [
+    ["night_end", "Fin de la nuit, en semaine", undefined],
+    ["night_end_day_off", "Fin de la nuit, jours de repos", "Week-end et jours fériés"],
+    ["night_end_holidays", "Fin de la nuit, en vacances", "Jours du calendrier de vacances"],
+  ]);
+  assert.equal(rows[4].kind, "time");
+
+  // Sans Workday ni calendrier : une seule fin de nuit, pour tous les jours
+  const plain = nightRows({});
+  assert.equal(plain.find((r) => r.key === "night_end").label, "Fin de la nuit");
+  assert.ok(!plain.some((r) => r.key === "night_end_day_off" || r.key === "night_end_holidays"));
+});

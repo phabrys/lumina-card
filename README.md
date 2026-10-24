@@ -39,7 +39,7 @@ Le curseur se manie aussi au clavier (flèches, Origine, Fin), et la carte suit 
 
 [Lumina](https://github.com/phabrys/lumina) **0.6.0 ou plus récent** : la carte lit les entités pilotées et les comptes à rebours que Lumina publie depuis cette version, et utilise son bouton « Rendre la main ».
 
-Les fonctions plus récentes apparaissent dès que Lumina les fournit : « Ventilateurs à allumer » avec Lumina 0.7.0, clims, ventilateurs pendant la clim et contrôle manuel jusqu'au matin avec Lumina **0.8.0**. Avec Lumina **0.9.2**, la carte sait quel groupe est en manuel jusqu'au matin et lequel ne l'est que pour la durée réglée. Le sommeil (bouton, phrase, réglages du geste et de la veilleuse) apparaît avec Lumina **0.10.0**.
+Les fonctions plus récentes apparaissent dès que Lumina les fournit : « Ventilateurs à allumer » avec Lumina 0.7.0, clims, ventilateurs pendant la clim et contrôle manuel jusqu'au matin avec Lumina **0.8.0**. Avec Lumina **0.9.2**, la carte sait quel groupe est en manuel jusqu'au matin et lequel ne l'est que pour la durée réglée. Le sommeil (bouton, phrase, réglages du geste et de la veilleuse) apparaît avec Lumina **0.10.0**. Les fins de nuit des jours de repos et de vacances apparaissent avec Lumina **0.11.0**, quand la pièce a un capteur Workday ou un calendrier de vacances.
 
 ## Installation
 

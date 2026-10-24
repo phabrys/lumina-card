@@ -34,6 +34,9 @@ const KEYS = {
   sleeping: "switch.lumina_chambre_sommeil",
   bedtime_gesture: "select.lumina_chambre_extinction_nuit",
   sleep_brightness: "number.lumina_chambre_veilleuse",
+  // Lumina 0.11, présentes seulement avec leur source (Workday, calendrier)
+  night_end_day_off: "time.lumina_chambre_fin_nuit_repos",
+  night_end_holidays: "time.lumina_chambre_fin_nuit_vacances",
 };
 
 const CLIMATE_ACTIONS = ["off", "eco", "setback", "none"];
