@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 — 2026-10-24
+
+- Installation via HACS : la release ne joint plus `lumina-card.js`, HACS le prend dans `dist/` du tag. Cela évite l'erreur `LineTooLong` (« Got more than 8190 bytes when reading ») des versions récentes de Home Assistant, due à un en-tête de plus de 8 Ko sur la redirection des fichiers joints de GitHub.
+
 ## 0.4.0 — 2026-10-24
 
 - Réglages, onglet Nuit : avec Lumina 0.11, les heures **Fin de la nuit, jours de repos** (week-end et jours fériés) et **Fin de la nuit, en vacances** apparaissent sous la fin de nuit, qui devient **Fin de la nuit, en semaine**. Chacune n'est affichée que si la pièce a sa source dans Lumina (Workday, calendrier de vacances).

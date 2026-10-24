@@ -1,7 +1,10 @@
 name: Release
 
 # Publie la release quand la CI réussit sur main et que la version de
-# package.json n'a pas encore de release. Le fichier de la carte est joint.
+# package.json n'a pas encore de release. Le fichier de la carte n'est pas
+# joint : HACS le prend alors dans dist/ au tag, via raw.githubusercontent.com.
+# La redirection d'un fichier joint (github.com/…/releases/download/…) porte
+# un en-tête de plus de 8 Ko que Home Assistant refuse (LineTooLong).
 on:
   workflow_run:
     workflows: [CI]
@@ -37,4 +40,4 @@ jobs:
           fi
           awk -v v="$VERSION" '$0 ~ "^## "v {f=1; next} /^## / {f=0} f' CHANGELOG.md > notes.md
           printf '\n**Mise à jour :** HACS → Lumina Card → Mettre à jour, puis recharger la page.\n' >> notes.md
-          gh release create "v$VERSION" dist/lumina-card.js --target "$TARGET" --title "Lumina Card $VERSION" --notes-file notes.md
+          gh release create "v$VERSION" --target "$TARGET" --title "Lumina Card $VERSION" --notes-file notes.md
