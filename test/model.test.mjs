@@ -307,14 +307,38 @@ test("détecteur indisponible : la note explique que la pièce reste occupée", 
   assert.equal(view.now.text, "Pièce occupée");
   assert.equal(view.notes[0], "Détecteur indisponible, la pièce reste occupée");
 
-  // Un seul détecteur muet sur deux : rien à signaler
-  hass.states[ENTITIES.room_state].attributes.presence_sensors = ["binary_sensor.fp2_chambre", "binary_sensor.pir"];
-  hass.states["binary_sensor.pir"] = { entity_id: "binary_sensor.pir", state: "on", attributes: {} };
-  assert.deepEqual(buildView(hass, config, NOW).notes, []);
-
   // Tous muets
-  hass.states["binary_sensor.pir"].state = "unknown";
+  hass.states[ENTITIES.room_state].attributes.presence_sensors = ["binary_sensor.fp2_chambre", "binary_sensor.pir"];
+  hass.states["binary_sensor.pir"] = { entity_id: "binary_sensor.pir", state: "unknown", attributes: {} };
   assert.equal(buildView(hass, config, NOW).notes[0], "Détecteurs indisponibles, la pièce reste occupée");
+});
+
+test("détecteur muet parmi d'autres : signalé avec son nom et la date", () => {
+  const hass = makeHass({
+    states: {
+      "binary_sensor.pir": {
+        state: "unavailable",
+        attributes: { friendly_name: "PIR chambre" },
+        last_changed: "2026-10-15T19:29:02Z",
+      },
+    },
+  });
+  hass.states[ENTITIES.room_state].attributes.presence_sensors = ["binary_sensor.fp2_chambre", "binary_sensor.pir"];
+  const view = buildView(hass, config, NOW);
+  assert.equal(view.now.text, "Pièce occupée");
+  assert.equal(view.notes[0], "PIR chambre indisponible depuis le 15/10");
+});
+
+test("pièce vide aux détecteurs muets : Lumina n'éteint plus rien, en tête des notes", () => {
+  const hass = makeHass({
+    room: { occupied: false, presence_unknown: true, daylight_locked: true },
+    states: {
+      "binary_sensor.fp2_chambre": { state: "unavailable", attributes: {}, last_changed: "2026-10-20T12:05:00Z" },
+    },
+  });
+  hass.states[ENTITIES.room_state].state = "vacant";
+  const notes = buildView(hass, config, NOW).notes;
+  assert.match(notes[0], /^Détecteur indisponible depuis \d\d:\d\d : Lumina n'éteint plus rien$/);
 });
 
 test("ventilateurs pendant la clim : brassage ou arrêt", () => {

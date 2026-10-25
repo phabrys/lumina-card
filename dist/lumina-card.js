@@ -1,4 +1,4 @@
-/*! Lumina Card 0.4.1 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.4.2 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -67,8 +67,15 @@ const fr = {
     vacant: "Pièce vide",
     vacant_night: "Pièce vide, mode nuit",
     // Notes secondaires
-    note_sensor_unavailable: "Détecteur indisponible, la pièce reste occupée",
-    note_sensors_unavailable: "Détecteurs indisponibles, la pièce reste occupée",
+    note_sensor_unavailable: "Détecteur indisponible{since}, la pièce reste occupée",
+    note_sensors_unavailable: "Détecteurs indisponibles{since}, la pièce reste occupée",
+    note_sensor_blind: "Détecteur indisponible{since} : Lumina n'éteint plus rien",
+    note_sensors_blind: "Détecteurs indisponibles{since} : Lumina n'éteint plus rien",
+    note_sensor_dead_plain: "Détecteur indisponible{since}",
+    note_sensors_dead: "Détecteurs indisponibles{since}",
+    note_sensor_dead: "{name} indisponible{since}",
+    since_time: " depuis {h}",
+    since_day: " depuis le {d}",
     note_forced_night: "Nuit forcée jusqu'à {h}",
     note_lights_paused: "Automatisme des lumières en pause",
     note_fans_paused: "Automatisme du ventilateur en pause",
@@ -276,8 +283,15 @@ const en = {
     occupied_night: "Room occupied, night mode",
     vacant: "Room empty",
     vacant_night: "Room empty, night mode",
-    note_sensor_unavailable: "Presence sensor unavailable, the room stays occupied",
-    note_sensors_unavailable: "Presence sensors unavailable, the room stays occupied",
+    note_sensor_unavailable: "Presence sensor unavailable{since}, the room stays occupied",
+    note_sensors_unavailable: "Presence sensors unavailable{since}, the room stays occupied",
+    note_sensor_blind: "Presence sensor unavailable{since}: Lumina no longer turns anything off",
+    note_sensors_blind: "Presence sensors unavailable{since}: Lumina no longer turns anything off",
+    note_sensor_dead_plain: "Presence sensor unavailable{since}",
+    note_sensors_dead: "Presence sensors unavailable{since}",
+    note_sensor_dead: "{name} unavailable{since}",
+    since_time: " since {h}",
+    since_day: " since {d}",
     note_forced_night: "Night forced until {h}",
     note_lights_paused: "Light automation paused",
     note_fans_paused: "Fan automation paused",
@@ -725,12 +739,11 @@ function buildView(hass, config, now, pending = {}) {
             ? { text: t("vacant_night"), icon: "moon", tone: "night" }
             : { text: t("vacant"), icon: "home", tone: "calm" };
     }
-    // Notes secondaires, par ordre d'importance
-    const sensors = a.presence_sensors ?? [];
-    const sensorStates = sensors.map((e) => hass.states[e]).filter((s) => !!s);
-    if (occupied && sensorStates.length && sensorStates.every((s) => s.state === "unavailable" || s.state === "unknown")) {
-        notes.push(t(sensors.length > 1 ? "note_sensors_unavailable" : "note_sensor_unavailable"));
-    }
+    // Notes secondaires, par ordre d'importance. Un détecteur muet passe
+    // devant tout : la pièce ne peut plus être suivie correctement.
+    const sensorNote = deadSensorsNote(hass, a, occupied, t, language, now);
+    if (sensorNote)
+        notes.unshift(sensorNote);
     if (forcedNight)
         notes.push(t("note_forced_night", { h: forcedUntil ? clock(forcedUntil) : "…" }));
     if (line.action?.kind !== "enable") {
@@ -780,6 +793,40 @@ function buildView(hass, config, now, pending = {}) {
         ticking,
         entities: room,
     };
+}
+/**
+ * Détecteurs de présence muets (piles, connexion) : depuis quand, et ce que
+ * Lumina en fait. Tous muets, il garde la pièce occupée ou, depuis Lumina
+ * 0.12, n'éteint plus rien.
+ */
+function deadSensorsNote(hass, a, occupied, t, language, now) {
+    const sensors = a.presence_sensors ?? [];
+    const dead = sensors.filter((e) => {
+        const state = hass.states[e];
+        return !state || state.state === "unavailable" || state.state === "unknown";
+    });
+    if (!dead.length)
+        return null;
+    const changes = dead
+        .map((e) => parseDate(hass.states[e]?.last_changed))
+        .filter((d) => d !== null)
+        .sort((x, y) => x.getTime() - y.getTime());
+    const since = changes.length ? formatSince(changes[0], now, language, t) : "";
+    if (dead.length < sensors.length) {
+        return t("note_sensor_dead", { name: joinWords(dead.map((e) => friendly(hass, e)), t("w_and")), since });
+    }
+    const plural = sensors.length > 1;
+    if (occupied)
+        return t(plural ? "note_sensors_unavailable" : "note_sensor_unavailable", { since });
+    if (a.presence_unknown === true)
+        return t(plural ? "note_sensors_blind" : "note_sensor_blind", { since });
+    return t(plural ? "note_sensors_dead" : "note_sensor_dead_plain", { since });
+}
+/** « depuis 14:05 » le jour même, « depuis le 15/10 » avant. */
+function formatSince(date, now, language, t) {
+    if (date.toDateString() === now.toDateString())
+        return t("since_time", { h: formatClock(date, language) });
+    return t("since_day", { d: date.toLocaleDateString(language, { day: "2-digit", month: "2-digit" }) });
 }
 /** « lumière, ventilateur et clim », avec une majuscule initiale. */
 function joinWords(words, and) {
@@ -2340,5 +2387,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.4.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.4.2"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

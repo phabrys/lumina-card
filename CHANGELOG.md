@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2 — 2026-10-25
+
+- Détecteurs de présence muets (piles, connexion) : la carte le signale toujours, en tête des notes, avec la date ou l'heure de la panne (« PIR chambre indisponible depuis le 15/10 »). Avant, elle ne disait rien quand la pièce était vide, ou quand un seul détecteur sur plusieurs était muet.
+- Avec Lumina 0.12, une pièce vide dont aucun détecteur ne répond affiche « Lumina n'éteint plus rien ».
+
 ## 0.4.1 — 2026-10-24
 
 - Installation via HACS : la release ne joint plus `lumina-card.js`, HACS le prend dans `dist/` du tag. Cela évite l'erreur `LineTooLong` (« Got more than 8190 bytes when reading ») des versions récentes de Home Assistant, due à un en-tête de plus de 8 Ko sur la redirection des fichiers joints de GitHub.
