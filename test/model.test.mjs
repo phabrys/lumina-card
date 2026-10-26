@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildView, formatCountdown, humanDuration, resolveRoom, settingTabs, translator } from "../build/model.js";
-import { smartStep, snap, tickKey } from "../build/card.js";
+import { buildView, formatCountdown, formatDelay, formatDuration, resolveRoom, settingTabs, translator } from "../build/model.js";
+import { durationStep, smartStep, snap, tickKey } from "../build/card.js";
 import { DEVICE, ENTITIES, makeHass } from "./fixtures.mjs";
 
 const config = { type: "custom:lumina-card", device: DEVICE };
@@ -117,6 +117,37 @@ test("un groupe en pause disparaît des panneaux et revient à sa réactivation"
   assert.deepEqual(buildView(resumed, config, NOW).panes.map((p) => p.kind), ["lights", "fans"]);
 });
 
+test("toutes les notes sont transmises, la carte n'en montre que deux d'emblée", () => {
+  const hass = makeHass({
+    room: { daylight_locked: true },
+    states: {
+      [ENTITIES.forced_night]: { state: "on", attributes: { until: inSeconds(3600) } },
+      [ENTITIES.auto_fans]: { state: "off", attributes: {} },
+    },
+  });
+  const notes = buildView(hass, config, NOW).notes;
+  assert.equal(notes.length, 3);
+  assert.match(notes[0], /^Nuit forcée/);
+  assert.equal(notes[2], "Lumière du jour suffisante, pas d'allumage");
+});
+
+test("teinte de la lumière et capteurs de l'ambiance", () => {
+  const hass = makeHass({
+    states: {
+      "light.chambre": {
+        state: "on",
+        attributes: { brightness: 179, supported_color_modes: ["color_temp"], color_mode: "color_temp", color_temp_kelvin: 2680 },
+      },
+    },
+  });
+  const view = buildView(hass, config, NOW);
+  assert.equal(view.panes[0].detail, "2\u202f700 K");
+  assert.equal(view.panes[1].detail, undefined);
+  assert.deepEqual(view.ambient.map((i) => i.entity), [
+    ENTITIES.apparent_temperature, "sensor.humidite_chambre", "sensor.lux_chambre",
+  ]);
+});
+
 test("présence maintenue par la TV", () => {
   const hass = makeHass({
     room: { presence_hold_active: true },
@@ -185,9 +216,22 @@ test("formats de durée", () => {
   assert.equal(formatCountdown(95_000), "1:35");
   assert.equal(formatCountdown(3_900_000), "1 h 05");
   const t = translator("fr");
-  assert.equal(humanDuration(120, "s", t), "2 min");
-  assert.equal(humanDuration(1800, "s", t), "30 min");
-  assert.equal(humanDuration(45, "s", t), null);
+  assert.equal(formatDuration(120, "s", t), "2 min");
+  assert.equal(formatDuration(1800, "s", t), "30 min");
+  assert.equal(formatDuration(45, "s", t), "45 s");
+  assert.equal(formatDuration(150, "s", t), "2 min 30 s");
+  assert.equal(formatDuration(90, "min", t), "1 h 30");
+  assert.equal(formatDuration(50, "lx", t), null);
+  assert.equal(formatDelay(7200, t), "2 h");
+});
+
+test("pas des durées : des valeurs rondes à l'horloge", () => {
+  assert.equal(durationStep(120, 10, 0, 3600, "s"), 30); // 2 min → 2 min 30 s
+  assert.equal(durationStep(900, 60, 0, 7200, "s"), 120); // 15 min → 16 min
+  assert.equal(durationStep(1800, 60, 0, 14400, "s"), 300); // 30 min → 35 min
+  assert.equal(durationStep(30, 5, 0, 600, "s"), 5);
+  assert.equal(durationStep(30, 5, 0, 240, "min"), 5);
+  assert.equal(durationStep(0, 7, 0, 100, "s"), 7); // aucun pas rond multiple de 7 au-delà : repli
 });
 
 test("pas des réglages adapté à la valeur", () => {

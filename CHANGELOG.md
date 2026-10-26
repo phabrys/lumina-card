@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0 — 2026-10-25
+
+- Réglages : les délais s'affichent en durée lisible (« 15 min », « 2 min 30 s ») au lieu de secondes brutes ; la valeur brute reste en infobulle. Les boutons − / + avancent par durées rondes (30 s, 5 min, 15 min…).
+- Les indications des panneaux suivent le même format : « S'éteint 1 min 30 s après ton départ » au lieu de « 2 min ».
+- Ambiance : toucher la température, l'humidité ou la luminosité ouvre la fiche du capteur, avec son historique.
+- Notes : au-delà de deux, un bouton **+1** affiche les suivantes au lieu de les taire.
+- Panneau lumière : la teinte des lampes allumées en blanc s'affiche après le titre (« Lumière · 2 700 K »).
+
 ## 0.5.1 — 2026-10-25
 
 - Comptes à rebours : la carte ne se redessine plus entière chaque seconde, seuls les textes changent. L'hélice du ventilateur ne saccade plus et le focus du clavier reste en place pendant un avertissement ou une échéance en pièce vide. Un lecteur d'écran ne lit plus le compte à rebours à chaque seconde.

@@ -138,6 +138,8 @@ export interface Pane {
   /** Pas du curseur : 1 pour la lumière, palier de vitesse du ventilateur. */
   step: number;
   value: string;
+  /** Précision après le titre : teinte de la lumière (« 2 700 K »). */
+  detail?: string;
   hint: string;
   auto: AutoState;
   autoEntity?: string;
@@ -150,6 +152,8 @@ export interface Pane {
 
 export interface AmbientItem {
   icon: IconName;
+  /** Capteur dont la fiche s'ouvre au toucher. */
+  entity: string;
   value: string;
   detail?: string;
   title?: string;
@@ -165,6 +169,7 @@ export interface RoomView {
   /** Pièce en sommeil (Lumina 0.10). */
   sleeping: boolean;
   now: NowLine;
+  /** Notes par ordre d'importance ; la carte n'en montre que deux d'emblée. */
   notes: string[];
   panes: Pane[];
   ambient: AmbientItem[];
@@ -449,7 +454,7 @@ export function buildView(
     forcedNight,
     sleeping,
     now: line,
-    notes: notes.slice(0, 2),
+    notes,
     panes,
     ambient: config.hide_ambient ? [] : ambient(hass, room, a, t, language),
     ticking,
@@ -551,6 +556,14 @@ function lightsPane(
   let value = on ? (level !== null ? `${level} %` : t("on")) : t("off");
   if (ids.length > 1 && on && pending === undefined) value += ` · ${t("of_total", { n: onStates.length, total: ids.length })}`;
 
+  // Teinte moyenne des lampes allumées en blanc, à la centaine de kelvins
+  const kelvins = onStates
+    .filter((s) => s?.attributes.color_mode === "color_temp" && typeof s.attributes.color_temp_kelvin === "number")
+    .map((s) => s!.attributes.color_temp_kelvin as number);
+  const detail = kelvins.length
+    ? `${formatNumber(Math.round(kelvins.reduce((x, y) => x + y, 0) / kelvins.length / 100) * 100, language)} K`
+    : undefined;
+
   let hint: string;
   if (auto === "paused") hint = t("hint_paused");
   else if (auto === "manual") hint = manualHint;
@@ -573,7 +586,7 @@ function lightsPane(
       : t("hint_lights_auto");
   }
 
-  return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, hint, auto, autoEntity: room.auto_lights };
+  return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, detail, hint, auto, autoEntity: room.auto_lights };
 }
 
 function fansPane(
@@ -691,17 +704,18 @@ function ambient(hass: Hass, room: RoomEntities, a: Record<string, any>, t: Tran
   if (apparent !== null) {
     items.push({
       icon: "thermometer",
+      entity: room.apparent_temperature!,
       value: `${formatNumber(apparent, language, 1)} °C`,
       detail: t("apparent"),
       title: measured !== null ? t("measured", { v: formatNumber(measured, language, 1) }) : undefined,
     });
   } else if (measured !== null) {
-    items.push({ icon: "thermometer", value: `${formatNumber(measured, language, 1)} °C` });
+    items.push({ icon: "thermometer", entity: a.temperature_sensor, value: `${formatNumber(measured, language, 1)} °C` });
   }
   const humidity = num(hass, a.humidity_sensor);
-  if (humidity !== null) items.push({ icon: "water", value: `${formatNumber(humidity, language)} %` });
+  if (humidity !== null) items.push({ icon: "water", entity: a.humidity_sensor, value: `${formatNumber(humidity, language)} %` });
   const lux = num(hass, a.illuminance_sensor);
-  if (lux !== null) items.push({ icon: "brightness", value: `${formatNumber(lux, language)} lx` });
+  if (lux !== null) items.push({ icon: "brightness", entity: a.illuminance_sensor, value: `${formatNumber(lux, language)} lx` });
   return items;
 }
 
@@ -833,26 +847,25 @@ function translateValues(keys: Record<string, StringKey>, t: Translate): Record<
   return Object.fromEntries(Object.entries(keys).map(([option, key]) => [option, t(key)]));
 }
 
-/** Délai lisible : « 45 s », « 2 min », « 1 h 30 ». */
+/** Durée lisible : « 45 s », « 2 min 30 s », « 15 min », « 1 h 30 ». */
 export function formatDelay(seconds: number, t: Translate): string {
-  if (seconds < 60) return t("d_s", { n: Math.round(seconds) });
-  if (seconds < 3600 || seconds % 3600 !== 0) {
-    const minutes = Math.round(seconds / 60);
-    if (minutes < 60) return t("d_min", { n: minutes });
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return m ? `${t("d_h", { n: h })} ${String(m).padStart(2, "0")}` : t("d_h", { n: h });
+  const total = Math.round(seconds);
+  if (total < 60) return t("d_s", { n: total });
+  if (total < 3600) {
+    const m = Math.floor(total / 60);
+    const sec = total % 60;
+    return sec ? `${t("d_min", { n: m })} ${t("d_s", { n: sec })}` : t("d_min", { n: m });
   }
-  return t("d_h", { n: seconds / 3600 });
+  const minutes = Math.round(total / 60);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${t("d_h", { n: h })} ${String(m).padStart(2, "0")}` : t("d_h", { n: h });
 }
 
-/** « 120 » s → « 2 min », pour aider à lire les délais. */
-export function humanDuration(value: number, unit: string | undefined, t: Translate): string | null {
+/** Réglage en secondes ou en minutes, en durée lisible (900 s → « 15 min ») ; null pour les autres unités. */
+export function formatDuration(value: number, unit: string | undefined, t: Translate): string | null {
   const seconds = unit === "s" ? value : unit === "min" ? value * 60 : null;
-  if (seconds === null || seconds < 60 || (unit === "min" && seconds < 3600)) return null;
-  if (seconds >= 3600 && seconds % 3600 === 0) return t("d_h", { n: seconds / 3600 });
-  if (seconds % 60 === 0) return t("d_min", { n: seconds / 60 });
-  return null;
+  return seconds === null ? null : formatDelay(seconds, t);
 }
 
 export { translator };

@@ -1,4 +1,4 @@
-/*! Lumina Card 0.5.1 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.6.0 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -174,6 +174,9 @@ const fr = {
     back: "Retour",
     error: "Action impossible : {e}",
     undo: "Annuler",
+    notes_more: "+{n}",
+    notes_more_label: "Afficher toutes les notes",
+    notes_less: "Moins",
     // Onglets de réglages
     tab_lights: "Lumière",
     tab_fans: "Ventilateur",
@@ -392,6 +395,9 @@ const en = {
     back: "Back",
     error: "Action failed: {e}",
     undo: "Undo",
+    notes_more: "+{n}",
+    notes_more_label: "Show all notes",
+    notes_less: "Less",
     tab_lights: "Light",
     tab_fans: "Fan",
     tab_climate: "AC",
@@ -812,7 +818,7 @@ function buildView(hass, config, now, pending = {}) {
         forcedNight,
         sleeping,
         now: line,
-        notes: notes.slice(0, 2),
+        notes,
         panes,
         ambient: config.hide_ambient ? [] : ambient(hass, room, a, t, language),
         ticking,
@@ -899,6 +905,13 @@ function lightsPane(hass, room, a, t, ids, auto, manualHint, { night, sleeping }
     let value = on ? (level !== null ? `${level} %` : t("on")) : t("off");
     if (ids.length > 1 && on && pending === undefined)
         value += ` · ${t("of_total", { n: onStates.length, total: ids.length })}`;
+    // Teinte moyenne des lampes allumées en blanc, à la centaine de kelvins
+    const kelvins = onStates
+        .filter((s) => s?.attributes.color_mode === "color_temp" && typeof s.attributes.color_temp_kelvin === "number")
+        .map((s) => s.attributes.color_temp_kelvin);
+    const detail = kelvins.length
+        ? `${formatNumber(Math.round(kelvins.reduce((x, y) => x + y, 0) / kelvins.length / 100) * 100, language)} K`
+        : undefined;
     let hint;
     if (auto === "paused")
         hint = t("hint_paused");
@@ -926,7 +939,7 @@ function lightsPane(hass, room, a, t, ids, auto, manualHint, { night, sleeping }
             ? t("hint_lights_below", { v: formatNumber(threshold, language) })
             : t("hint_lights_auto");
     }
-    return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, hint, auto, autoEntity: room.auto_lights };
+    return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, detail, hint, auto, autoEntity: room.auto_lights };
 }
 function fansPane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, language, pending) {
     const states = ids.map((id) => hass.states[id]);
@@ -1043,20 +1056,21 @@ function ambient(hass, room, a, t, language) {
     if (apparent !== null) {
         items.push({
             icon: "thermometer",
+            entity: room.apparent_temperature,
             value: `${formatNumber(apparent, language, 1)} °C`,
             detail: t("apparent"),
             title: measured !== null ? t("measured", { v: formatNumber(measured, language, 1) }) : undefined,
         });
     }
     else if (measured !== null) {
-        items.push({ icon: "thermometer", value: `${formatNumber(measured, language, 1)} °C` });
+        items.push({ icon: "thermometer", entity: a.temperature_sensor, value: `${formatNumber(measured, language, 1)} °C` });
     }
     const humidity = num(hass, a.humidity_sensor);
     if (humidity !== null)
-        items.push({ icon: "water", value: `${formatNumber(humidity, language)} %` });
+        items.push({ icon: "water", entity: a.humidity_sensor, value: `${formatNumber(humidity, language)} %` });
     const lux = num(hass, a.illuminance_sensor);
     if (lux !== null)
-        items.push({ icon: "brightness", value: `${formatNumber(lux, language)} lx` });
+        items.push({ icon: "brightness", entity: a.illuminance_sensor, value: `${formatNumber(lux, language)} lx` });
     return items;
 }
 const ALL_ANY = { all: "o_all", any: "o_any" };
@@ -1157,30 +1171,25 @@ function rowLabel(room, key, label) {
 function translateValues(keys, t) {
     return Object.fromEntries(Object.entries(keys).map(([option, key]) => [option, t(key)]));
 }
-/** Délai lisible : « 45 s », « 2 min », « 1 h 30 ». */
+/** Durée lisible : « 45 s », « 2 min 30 s », « 15 min », « 1 h 30 ». */
 function formatDelay(seconds, t) {
-    if (seconds < 60)
-        return t("d_s", { n: Math.round(seconds) });
-    if (seconds < 3600 || seconds % 3600 !== 0) {
-        const minutes = Math.round(seconds / 60);
-        if (minutes < 60)
-            return t("d_min", { n: minutes });
-        const h = Math.floor(minutes / 60);
-        const m = minutes % 60;
-        return m ? `${t("d_h", { n: h })} ${String(m).padStart(2, "0")}` : t("d_h", { n: h });
+    const total = Math.round(seconds);
+    if (total < 60)
+        return t("d_s", { n: total });
+    if (total < 3600) {
+        const m = Math.floor(total / 60);
+        const sec = total % 60;
+        return sec ? `${t("d_min", { n: m })} ${t("d_s", { n: sec })}` : t("d_min", { n: m });
     }
-    return t("d_h", { n: seconds / 3600 });
+    const minutes = Math.round(total / 60);
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m ? `${t("d_h", { n: h })} ${String(m).padStart(2, "0")}` : t("d_h", { n: h });
 }
-/** « 120 » s → « 2 min », pour aider à lire les délais. */
-function humanDuration(value, unit, t) {
+/** Réglage en secondes ou en minutes, en durée lisible (900 s → « 15 min ») ; null pour les autres unités. */
+function formatDuration(value, unit, t) {
     const seconds = unit === "s" ? value : unit === "min" ? value * 60 : null;
-    if (seconds === null || seconds < 60 || (unit === "min" && seconds < 3600))
-        return null;
-    if (seconds >= 3600 && seconds % 3600 === 0)
-        return t("d_h", { n: seconds / 3600 });
-    if (seconds % 60 === 0)
-        return t("d_min", { n: seconds / 60 });
-    return null;
+    return seconds === null ? null : formatDelay(seconds, t);
 }
 
 // --- styles.ts ---
@@ -1373,6 +1382,13 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   color: var(--lc-muted);
   font-variant-numeric: tabular-nums;
 }
+.notes-toggle button {
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--lc-text);
+  border-radius: 6px;
+}
+.notes-toggle button:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* --- Panneaux lumière / ventilateur --------------------------------------- */
 
@@ -1541,7 +1557,10 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  color: inherit;
+  border-radius: 6px;
 }
+.ambient-item:hover b { text-decoration: underline; text-underline-offset: 3px; }
 .ambient-item svg { width: 16px; height: 16px; opacity: 0.8; }
 .ambient-item b { color: var(--lc-text); font-weight: 500; }
 
@@ -1627,7 +1646,6 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   font-variant-numeric: tabular-nums;
 }
 .stepper-value span { font-weight: 600; }
-.stepper-value small { font-size: 0.7rem; color: var(--lc-muted); }
 .stepper-value.pending span { color: var(--lc-countdown); }
 
 .switch {
@@ -1736,6 +1754,18 @@ function smartStep(value, step, min, max) {
     const nice = [1, 2, 5, 10].map((m) => m * magnitude).find((n) => n >= target) ?? target;
     return Math.max(step, Math.round(nice / step) * step);
 }
+/** Pas des durées, ronds à l'horloge : 30 s, 5 min, 15 min… (en secondes). */
+const DURATION_STEPS = [1, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+/**
+ * Pas d'un réglage en secondes ou en minutes : comme smartStep, mais pris
+ * parmi des durées rondes, pour que la valeur se lise bien (« 2 min 30 s »).
+ */
+function durationStep(value, step, min, max, unit) {
+    const scale = unit === "min" ? 60 : 1;
+    const target = Math.max(step, Math.min(Math.abs(value) * 0.1, (max - min) / 40)) * scale;
+    const nice = DURATION_STEPS.find((n) => n >= target && (n / scale) % step === 0);
+    return nice !== undefined ? nice / scale : smartStep(value, step, min, max);
+}
 /** Arrondit au palier le plus proche ; 0 et 100 restent atteignables. */
 function snap(value, step) {
     if (value >= 100 - step / 2)
@@ -1760,6 +1790,8 @@ class LuminaCard extends BaseElement {
     _view;
     _signature = [];
     _settingsOpen = false;
+    /** Toutes les notes affichées, au lieu des deux premières. */
+    _notesOpen = false;
     _tab;
     _pending = {};
     _pendingTimers = {};
@@ -1885,8 +1917,13 @@ class LuminaCard extends BaseElement {
         <span class="now-text">${esc(now.text)}</span>
         ${action}
       </div>`;
+        const shown = this._shownNotes(view);
+        const toggle = view.notes.length > 2
+            ? `<li class="notes-toggle"><button data-action="notes" aria-expanded="${this._notesOpen}"
+            ${this._notesOpen ? "" : `aria-label="${esc(t("notes_more_label"))}"`}>${esc(this._notesOpen ? t("notes_less") : t("notes_more", { n: view.notes.length - shown.length }))}</button></li>`
+            : "";
         const notes = view.notes.length
-            ? `<ul class="notes">${view.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`
+            ? `<ul class="notes">${shown.map((n) => `<li class="note">${esc(n)}</li>`).join("")}${toggle}</ul>`
             : "";
         if (view.status !== "ok") {
             return `<div class="card tone-alert">${header}${nowLine}</div>`;
@@ -1896,10 +1933,13 @@ class LuminaCard extends BaseElement {
             : "";
         const ambient = view.ambient.length
             ? `<div class="ambient">${view.ambient
-                .map((item) => `<span class="ambient-item"${item.title ? ` title="${esc(item.title)}"` : ""}>${svg(item.icon)}<b>${esc(item.value)}</b>${item.detail ? `<span>${esc(item.detail)}</span>` : ""}</span>`)
+                .map((item) => `<button class="ambient-item" data-action="more-info" data-entity="${esc(item.entity)}"${item.title ? ` title="${esc(item.title)}"` : ""}>${svg(item.icon)}<b>${esc(item.value)}</b>${item.detail ? `<span>${esc(item.detail)}</span>` : ""}</button>`)
                 .join("")}</div>`
             : "";
         return `<div class="card tone-${now.tone}">${header}${nowLine}${notes}${panes}${ambient}</div>`;
+    }
+    _shownNotes(view) {
+        return this._notesOpen ? view.notes : view.notes.slice(0, 2);
     }
     _renderPeriod(view) {
         const t = translator(languageOf(this._hass));
@@ -1967,7 +2007,7 @@ class LuminaCard extends BaseElement {
           ${pill}
         </div>
         <button class="pane-value" data-action="more-info" data-entity="${esc(pane.entities[0])}">
-          <span class="pane-title">${esc(pane.title)}</span>
+          <span class="pane-title">${esc(pane.title)}${pane.detail ? ` · ${esc(pane.detail)}` : ""}</span>
           <span class="value">${esc(pane.value)}</span>
         </button>
         ${slider}
@@ -2031,14 +2071,16 @@ class LuminaCard extends BaseElement {
         const pending = this._numbers.get(row.entity);
         const value = pending ?? Number(state.state);
         const unit = a.unit_of_measurement;
-        const human = humanDuration(value, unit, t);
+        // Durée lisible en gros, valeur brute en infobulle
+        const duration = formatDuration(value, unit, t);
+        const raw = `${formatValue(value, step, language)}${unit ? ` ${unit}` : ""}`;
         return `<div class="row">${text}
       <div class="stepper">
         <button data-action="step" data-dir="-1" data-entity="${esc(row.entity)}" ${value <= min ? "disabled" : ""}
           aria-label="−">${svg("minus")}</button>
-        <div class="stepper-value ${pending !== undefined ? "pending" : ""}" data-action="more-info" data-entity="${esc(row.entity)}">
-          <span>${esc(formatValue(value, step, language))}${unit ? `&nbsp;${esc(unit)}` : ""}</span>
-          ${human ? `<small>${esc(human)}</small>` : ""}
+        <div class="stepper-value ${pending !== undefined ? "pending" : ""}" data-action="more-info" data-entity="${esc(row.entity)}"
+          ${duration ? `title="${esc(raw)}"` : ""}>
+          <span>${esc(duration ?? raw).replace(/ /g, "&nbsp;")}</span>
         </div>
         <button data-action="step" data-dir="1" data-entity="${esc(row.entity)}" ${value >= max ? "disabled" : ""}
           aria-label="+">${svg("plus")}</button>
@@ -2067,12 +2109,13 @@ class LuminaCard extends BaseElement {
         if (this._drawnKey === undefined || tickKey(view) !== this._drawnKey)
             return false;
         const text = this._root.querySelector(".now-text");
-        const notes = this._root.querySelectorAll(".notes li");
-        if (!text || notes.length !== view.notes.length)
+        const notes = this._root.querySelectorAll(".notes li.note");
+        const shown = this._shownNotes(view);
+        if (!text || notes.length !== shown.length)
             return false;
         if (text.textContent !== view.now.text)
             text.textContent = view.now.text;
-        view.notes.forEach((note, index) => {
+        shown.forEach((note, index) => {
             if (notes[index].textContent !== note)
                 notes[index].textContent = note;
         });
@@ -2138,6 +2181,10 @@ class LuminaCard extends BaseElement {
             case "close":
                 this._settingsOpen = false;
                 this._numbers.clear();
+                this._draw();
+                break;
+            case "notes":
+                this._notesOpen = !this._notesOpen;
                 this._draw();
                 break;
             case "tab":
@@ -2223,7 +2270,8 @@ class LuminaCard extends BaseElement {
         const min = Number(a.min ?? 0);
         const max = Number(a.max ?? 100);
         const current = this._numbers.get(entityId) ?? Number(state.state);
-        const increment = smartStep(current, step, min, max);
+        const unit = a.unit_of_measurement;
+        const increment = unit === "s" || unit === "min" ? durationStep(current, step, min, max, unit) : smartStep(current, step, min, max);
         // Arrondi au multiple de l'incrément, pour rester sur des valeurs rondes
         let next = direction > 0
             ? Math.floor(current / increment + 1e-9) * increment + increment
@@ -2472,5 +2520,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.5.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.6.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

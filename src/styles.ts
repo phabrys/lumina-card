@@ -188,6 +188,13 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   color: var(--lc-muted);
   font-variant-numeric: tabular-nums;
 }
+.notes-toggle button {
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--lc-text);
+  border-radius: 6px;
+}
+.notes-toggle button:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* --- Panneaux lumière / ventilateur --------------------------------------- */
 
@@ -356,7 +363,10 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  color: inherit;
+  border-radius: 6px;
 }
+.ambient-item:hover b { text-decoration: underline; text-underline-offset: 3px; }
 .ambient-item svg { width: 16px; height: 16px; opacity: 0.8; }
 .ambient-item b { color: var(--lc-text); font-weight: 500; }
 
@@ -442,7 +452,6 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   font-variant-numeric: tabular-nums;
 }
 .stepper-value span { font-weight: 600; }
-.stepper-value small { font-size: 0.7rem; color: var(--lc-muted); }
 .stepper-value.pending span { color: var(--lc-countdown); }
 
 .switch {

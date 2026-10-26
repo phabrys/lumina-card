@@ -5,7 +5,7 @@
 import { ICONS, type IconName } from "./icons.js";
 import {
   buildView,
-  humanDuration,
+  formatDuration,
   languageOf,
   settingTabs,
   translator,
@@ -47,6 +47,20 @@ export function smartStep(value: number, step: number, min: number, max: number)
   return Math.max(step, Math.round(nice / step) * step);
 }
 
+/** Pas des durées, ronds à l'horloge : 30 s, 5 min, 15 min… (en secondes). */
+const DURATION_STEPS = [1, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600];
+
+/**
+ * Pas d'un réglage en secondes ou en minutes : comme smartStep, mais pris
+ * parmi des durées rondes, pour que la valeur se lise bien (« 2 min 30 s »).
+ */
+export function durationStep(value: number, step: number, min: number, max: number, unit: "s" | "min"): number {
+  const scale = unit === "min" ? 60 : 1;
+  const target = Math.max(step, Math.min(Math.abs(value) * 0.1, (max - min) / 40)) * scale;
+  const nice = DURATION_STEPS.find((n) => n >= target && (n / scale) % step === 0);
+  return nice !== undefined ? nice / scale : smartStep(value, step, min, max);
+}
+
 /** Arrondit au palier le plus proche ; 0 et 100 restent atteignables. */
 export function snap(value: number, step: number): number {
   if (value >= 100 - step / 2) return 100;
@@ -73,6 +87,8 @@ export class LuminaCard extends BaseElement {
   private _view?: RoomView;
   private _signature: unknown[] = [];
   private _settingsOpen = false;
+  /** Toutes les notes affichées, au lieu des deux premières. */
+  private _notesOpen = false;
   private _tab: SettingTab["id"] | undefined;
   private _pending: Pending = {};
   private _pendingTimers: Partial<Record<keyof Pending, number>> = {};
@@ -212,8 +228,16 @@ export class LuminaCard extends BaseElement {
         <span class="now-text">${esc(now.text)}</span>
         ${action}
       </div>`;
+    const shown = this._shownNotes(view);
+    const toggle =
+      view.notes.length > 2
+        ? `<li class="notes-toggle"><button data-action="notes" aria-expanded="${this._notesOpen}"
+            ${this._notesOpen ? "" : `aria-label="${esc(t("notes_more_label"))}"`}>${
+              esc(this._notesOpen ? t("notes_less") : t("notes_more", { n: view.notes.length - shown.length }))
+            }</button></li>`
+        : "";
     const notes = view.notes.length
-      ? `<ul class="notes">${view.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>`
+      ? `<ul class="notes">${shown.map((n) => `<li class="note">${esc(n)}</li>`).join("")}${toggle}</ul>`
       : "";
 
     if (view.status !== "ok") {
@@ -227,14 +251,18 @@ export class LuminaCard extends BaseElement {
       ? `<div class="ambient">${view.ambient
           .map(
             (item) =>
-              `<span class="ambient-item"${item.title ? ` title="${esc(item.title)}"` : ""}>${svg(item.icon)}<b>${esc(item.value)}</b>${
-                item.detail ? `<span>${esc(item.detail)}</span>` : ""
-              }</span>`,
+              `<button class="ambient-item" data-action="more-info" data-entity="${esc(item.entity)}"${
+                item.title ? ` title="${esc(item.title)}"` : ""
+              }>${svg(item.icon)}<b>${esc(item.value)}</b>${item.detail ? `<span>${esc(item.detail)}</span>` : ""}</button>`,
           )
           .join("")}</div>`
       : "";
 
     return `<div class="card tone-${now.tone}">${header}${nowLine}${notes}${panes}${ambient}</div>`;
+  }
+
+  private _shownNotes(view: RoomView): string[] {
+    return this._notesOpen ? view.notes : view.notes.slice(0, 2);
   }
 
   private _renderPeriod(view: RoomView): string {
@@ -306,7 +334,7 @@ export class LuminaCard extends BaseElement {
           ${pill}
         </div>
         <button class="pane-value" data-action="more-info" data-entity="${esc(pane.entities[0])}">
-          <span class="pane-title">${esc(pane.title)}</span>
+          <span class="pane-title">${esc(pane.title)}${pane.detail ? ` · ${esc(pane.detail)}` : ""}</span>
           <span class="value">${esc(pane.value)}</span>
         </button>
         ${slider}
@@ -383,14 +411,16 @@ export class LuminaCard extends BaseElement {
     const pending = this._numbers.get(row.entity);
     const value = pending ?? Number(state.state);
     const unit: string | undefined = a.unit_of_measurement;
-    const human = humanDuration(value, unit, t);
+    // Durée lisible en gros, valeur brute en infobulle
+    const duration = formatDuration(value, unit, t);
+    const raw = `${formatValue(value, step, language)}${unit ? ` ${unit}` : ""}`;
     return `<div class="row">${text}
       <div class="stepper">
         <button data-action="step" data-dir="-1" data-entity="${esc(row.entity)}" ${value <= min ? "disabled" : ""}
           aria-label="−">${svg("minus")}</button>
-        <div class="stepper-value ${pending !== undefined ? "pending" : ""}" data-action="more-info" data-entity="${esc(row.entity)}">
-          <span>${esc(formatValue(value, step, language))}${unit ? `&nbsp;${esc(unit)}` : ""}</span>
-          ${human ? `<small>${esc(human)}</small>` : ""}
+        <div class="stepper-value ${pending !== undefined ? "pending" : ""}" data-action="more-info" data-entity="${esc(row.entity)}"
+          ${duration ? `title="${esc(raw)}"` : ""}>
+          <span>${esc(duration ?? raw).replace(/ /g, "&nbsp;")}</span>
         </div>
         <button data-action="step" data-dir="1" data-entity="${esc(row.entity)}" ${value >= max ? "disabled" : ""}
           aria-label="+">${svg("plus")}</button>
@@ -417,10 +447,11 @@ export class LuminaCard extends BaseElement {
   private _patch(view: RoomView): boolean {
     if (this._drawnKey === undefined || tickKey(view) !== this._drawnKey) return false;
     const text = this._root.querySelector(".now-text");
-    const notes = this._root.querySelectorAll(".notes li");
-    if (!text || notes.length !== view.notes.length) return false;
+    const notes = this._root.querySelectorAll(".notes li.note");
+    const shown = this._shownNotes(view);
+    if (!text || notes.length !== shown.length) return false;
     if (text.textContent !== view.now.text) text.textContent = view.now.text;
-    view.notes.forEach((note, index) => {
+    shown.forEach((note, index) => {
       if (notes[index].textContent !== note) notes[index].textContent = note;
     });
     return true;
@@ -497,6 +528,10 @@ export class LuminaCard extends BaseElement {
         this._numbers.clear();
         this._draw();
         break;
+      case "notes":
+        this._notesOpen = !this._notesOpen;
+        this._draw();
+        break;
       case "tab":
         this._tab = target.dataset.tab as SettingTab["id"];
         this._draw();
@@ -571,7 +606,9 @@ export class LuminaCard extends BaseElement {
     const min = Number(a.min ?? 0);
     const max = Number(a.max ?? 100);
     const current = this._numbers.get(entityId) ?? Number(state.state);
-    const increment = smartStep(current, step, min, max);
+    const unit = a.unit_of_measurement;
+    const increment =
+      unit === "s" || unit === "min" ? durationStep(current, step, min, max, unit) : smartStep(current, step, min, max);
     // Arrondi au multiple de l'incrément, pour rester sur des valeurs rondes
     let next = direction > 0
       ? Math.floor(current / increment + 1e-9) * increment + increment
