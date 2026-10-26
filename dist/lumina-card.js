@@ -1,4 +1,4 @@
-/*! Lumina Card 0.4.2 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.5.0 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -167,6 +167,7 @@ const fr = {
     tap_enable: "Réactiver l'automatisme",
     toggle: "Allumer ou éteindre",
     day: "Jour",
+    evening: "Soirée",
     night: "Nuit",
     natural_night: "Nuit jusqu'à {h}",
     sleep: "Sommeil",
@@ -182,9 +183,11 @@ const fr = {
     s_auto: "Gestion automatique",
     s_lux_threshold: "S'allume sous",
     s_day_brightness: "Luminosité le jour",
+    s_evening_brightness: "Luminosité en soirée",
     s_night_brightness: "Luminosité la nuit",
     h_night_brightness: "0 % : pas d'allumage la nuit",
     s_day_color_temp: "Teinte le jour",
+    s_evening_color_temp: "Teinte en soirée",
     s_night_color_temp: "Teinte la nuit",
     h_color_temp: "0 : garder la teinte de la lampe",
     s_light_off_delay: "Extinction après ton départ",
@@ -235,6 +238,8 @@ const fr = {
     s_night_fan_off_delay: "Arrêt après ton départ, la nuit",
     s_forced_night: "Nuit maintenant",
     h_forced_night: "Jusqu'à la prochaine fin de nuit",
+    s_evening_start: "Début de la soirée",
+    h_evening_window: "Lumières plus douces jusqu'à la nuit. Même heure que la nuit : pas de soirée",
     s_night_start: "Début de la nuit",
     s_night_end: "Fin de la nuit",
     s_night_end_workday: "Fin de la nuit, en semaine",
@@ -379,6 +384,7 @@ const en = {
     tap_enable: "Turn automation back on",
     toggle: "Turn on or off",
     day: "Day",
+    evening: "Evening",
     night: "Night",
     natural_night: "Night until {h}",
     sleep: "Sleep",
@@ -392,9 +398,11 @@ const en = {
     s_auto: "Automatic control",
     s_lux_threshold: "Turns on below",
     s_day_brightness: "Brightness by day",
+    s_evening_brightness: "Brightness in the evening",
     s_night_brightness: "Brightness at night",
     h_night_brightness: "0 %: no turn-on at night",
     s_day_color_temp: "Color by day",
+    s_evening_color_temp: "Color in the evening",
     s_night_color_temp: "Color at night",
     h_color_temp: "0: keep the lamp's color",
     s_light_off_delay: "Turns off after you leave",
@@ -445,6 +453,8 @@ const en = {
     s_night_fan_off_delay: "Stops after you leave, at night",
     s_forced_night: "Night now",
     h_forced_night: "Until the next end of night",
+    s_evening_start: "Evening starts",
+    h_evening_window: "Softer lights until night. Same time as night: no evening",
     s_night_start: "Night starts",
     s_night_end: "Night ends",
     s_night_end_workday: "Night ends, workdays",
@@ -575,7 +585,7 @@ function buildView(hass, config, now, pending = {}) {
     const room = resolveRoom(hass, deviceOf(hass, config));
     const name = roomName(hass, config, room);
     const empty = {
-        name, night: false, forcedNight: false, sleeping: false, notes: [], panes: [], ambient: [], ticking: false, entities: room,
+        name, night: false, evening: false, forcedNight: false, sleeping: false, notes: [], panes: [], ambient: [], ticking: false, entities: room,
     };
     if (!room.room_state) {
         return { ...empty, status: "missing", now: { text: t("missing"), icon: "alert", tone: "alert" } };
@@ -586,6 +596,7 @@ function buildView(hass, config, now, pending = {}) {
     }
     const a = roomState.attributes;
     const night = a.period === "night";
+    const evening = a.period === "evening";
     // En sommeil, Lumina applique les réglages de nuit, sieste comprise.
     const sleeping = a.sleeping === true;
     const nightRules = night || sleeping;
@@ -784,6 +795,7 @@ function buildView(hass, config, now, pending = {}) {
         status: "ok",
         name,
         night,
+        evening,
         forcedNight,
         sleeping,
         now: line,
@@ -1051,8 +1063,11 @@ const TABS = [
             ["auto_lights", "switch", "s_auto"],
             ["lux_threshold", "number", "s_lux_threshold"],
             ["day_brightness", "number", "s_day_brightness"],
+            // Lumina 0.13
+            ["evening_brightness", "number", "s_evening_brightness"],
             ["night_brightness", "number", "s_night_brightness", "h_night_brightness"],
             ["day_color_temp", "number", "s_day_color_temp", "h_color_temp"],
+            ["evening_color_temp", "number", "s_evening_color_temp", "h_color_temp"],
             ["night_color_temp", "number", "s_night_color_temp", "h_color_temp"],
             ["light_off_delay", "number", "s_light_off_delay"],
             ["night_light_off_delay", "number", "s_night_light_off_delay"],
@@ -1087,6 +1102,8 @@ const TABS = [
         id: "night", label: "tab_night", icon: "moon", rows: [
             ["forced_night", "switch", "s_forced_night", "h_forced_night"],
             ["sleeping", "switch", "s_sleeping", "h_sleeping"],
+            // Lumina 0.13
+            ["evening_start", "time", "s_evening_start", "h_evening_window"],
             ["night_start", "time", "s_night_start", "h_night_window"],
             ["night_end", "time", "s_night_end"],
             // Lumina 0.11, avec Workday ou un calendrier de vacances
@@ -1862,7 +1879,7 @@ class LuminaCard extends BaseElement {
     _renderPeriod(view) {
         const t = translator(languageOf(this._hass));
         const forcedEntity = view.entities.forced_night;
-        const label = view.night ? t("night") : t("day");
+        const label = view.night ? t("night") : view.evening ? t("evening") : t("day");
         // Nuit naturelle : rien à basculer. Sinon : forcer ou annuler la nuit.
         const actionable = !!forcedEntity && (!view.night || view.forcedNight);
         const title = view.forcedNight ? t("day_now") : view.night ? label : t("night_now");
@@ -2387,5 +2404,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.4.2"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.5.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

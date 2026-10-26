@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0 — 2026-10-25
+
+- Soirée de Lumina 0.13 : la pastille affiche **Soirée** entre le début de la soirée et la nuit. Réglages, onglet Lumière : **Luminosité en soirée** sous la luminosité du jour, **Teinte en soirée** sous la teinte du jour ; onglet Nuit : **Début de la soirée** avant le début de la nuit. Ces réglages n'apparaissent qu'avec Lumina 0.13.
+
 ## 0.4.2 — 2026-10-25
 
 - Détecteurs de présence muets (piles, connexion) : la carte le signale toujours, en tête des notes, avec la date ou l'heure de la panne (« PIR chambre indisponible depuis le 15/10 »). Avant, elle ne disait rien quand la pièce était vide, ou quand un seul détecteur sur plusieurs était muet.

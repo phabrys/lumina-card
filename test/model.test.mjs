@@ -512,3 +512,37 @@ test("Lumina 0.11 : fins de nuit des jours de repos et de vacances", () => {
   assert.equal(plain.find((r) => r.key === "night_end").label, "Fin de la nuit");
   assert.ok(!plain.some((r) => r.key === "night_end_day_off" || r.key === "night_end_holidays"));
 });
+
+test("Lumina 0.13 : soirée, pastille et réglages", () => {
+  const hass = makeHass({
+    sleep: true,
+    room: { period: "evening" },
+    states: {
+      [ENTITIES.evening_start]: { state: "19:00:00", attributes: {} },
+      [ENTITIES.evening_brightness]: { state: "70", attributes: { unit_of_measurement: "%", min: 1, max: 100, step: 1 } },
+      [ENTITIES.evening_color_temp]: { state: "3000", attributes: { unit_of_measurement: "K", min: 0, max: 6500, step: 100 } },
+    },
+  });
+  const view = buildView(hass, config, NOW);
+  assert.equal(view.evening, true);
+  assert.equal(view.night, false);
+
+  const tabs = settingTabs(view.entities, translator("fr"));
+  const lights = tabs.find((tab) => tab.id === "lights").rows.map((r) => r.key);
+  assert.deepEqual(lights.slice(lights.indexOf("day_brightness"), lights.indexOf("day_brightness") + 2), [
+    "day_brightness", "evening_brightness",
+  ]);
+  assert.ok(lights.includes("evening_color_temp"));
+  const night = tabs.find((tab) => tab.id === "night").rows;
+  const evening = night.find((r) => r.key === "evening_start");
+  assert.equal(evening.label, "Début de la soirée");
+  assert.equal(evening.kind, "time");
+  assert.equal(night[night.indexOf(evening) + 1].key, "night_start");
+});
+
+test("avant Lumina 0.13 : pas de réglages de soirée", () => {
+  const view = buildView(makeHass({ sleep: true }), config, NOW);
+  assert.equal(view.evening, false);
+  const keys = settingTabs(view.entities, translator("fr")).flatMap((tab) => tab.rows.map((r) => r.key));
+  assert.ok(!keys.some((key) => key.startsWith("evening_")));
+});

@@ -37,6 +37,10 @@ const KEYS = {
   // Lumina 0.11, présentes seulement avec leur source (Workday, calendrier)
   night_end_day_off: "time.lumina_chambre_fin_nuit_repos",
   night_end_holidays: "time.lumina_chambre_fin_nuit_vacances",
+  // Lumina 0.13
+  evening_start: "time.lumina_chambre_debut_soiree",
+  evening_brightness: "number.lumina_chambre_luminosite_soiree",
+  evening_color_temp: "number.lumina_chambre_teinte_soiree",
 };
 
 const CLIMATE_ACTIONS = ["off", "eco", "setback", "none"];

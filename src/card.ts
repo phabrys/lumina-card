@@ -227,7 +227,7 @@ export class LuminaCard extends BaseElement {
   private _renderPeriod(view: RoomView): string {
     const t = translator(languageOf(this._hass!));
     const forcedEntity = view.entities.forced_night;
-    const label = view.night ? t("night") : t("day");
+    const label = view.night ? t("night") : view.evening ? t("evening") : t("day");
     // Nuit naturelle : rien à basculer. Sinon : forcer ou annuler la nuit.
     const actionable = !!forcedEntity && (!view.night || view.forcedNight);
     const title = view.forcedNight ? t("day_now") : view.night ? label : t("night_now");

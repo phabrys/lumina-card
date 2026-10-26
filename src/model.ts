@@ -53,7 +53,8 @@ export type LuminaKey =
   | "temperature_threshold" | "night_temperature_threshold" | "fan_min_speed" | "fan_speed_range"
   | "fan_off_delay" | "night_fan_off_delay" | "vacancy_confirmation" | "override_duration"
   | "climate_vacant_day" | "climate_vacant_night" | "climate_vacant_delay" | "fans_with_climate" | "fan_mix_speed"
-  | "sleeping" | "bedtime_gesture" | "sleep_brightness" | "night_end_day_off" | "night_end_holidays";
+  | "sleeping" | "bedtime_gesture" | "sleep_brightness" | "night_end_day_off" | "night_end_holidays"
+  | "evening_start" | "evening_brightness" | "evening_color_temp";
 
 export type RoomEntities = Partial<Record<LuminaKey, string>>;
 
@@ -148,6 +149,8 @@ export interface RoomView {
   status: "ok" | "missing" | "unavailable";
   name: string;
   night: boolean;
+  /** Soirée : lumières plus douces, règles du jour pour le reste (Lumina 0.13). */
+  evening: boolean;
   forcedNight: boolean;
   /** Pièce en sommeil (Lumina 0.10). */
   sleeping: boolean;
@@ -232,7 +235,7 @@ export function buildView(
   const room = resolveRoom(hass, deviceOf(hass, config));
   const name = roomName(hass, config, room);
   const empty: Omit<RoomView, "status" | "now"> = {
-    name, night: false, forcedNight: false, sleeping: false, notes: [], panes: [], ambient: [], ticking: false, entities: room,
+    name, night: false, evening: false, forcedNight: false, sleeping: false, notes: [], panes: [], ambient: [], ticking: false, entities: room,
   };
 
   if (!room.room_state) {
@@ -245,6 +248,7 @@ export function buildView(
 
   const a = roomState.attributes;
   const night = a.period === "night";
+  const evening = a.period === "evening";
   // En sommeil, Lumina applique les réglages de nuit, sieste comprise.
   const sleeping = a.sleeping === true;
   const nightRules = night || sleeping;
@@ -431,6 +435,7 @@ export function buildView(
     status: "ok",
     name,
     night,
+    evening,
     forcedNight,
     sleeping,
     now: line,
@@ -733,8 +738,11 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
       ["auto_lights", "switch", "s_auto"],
       ["lux_threshold", "number", "s_lux_threshold"],
       ["day_brightness", "number", "s_day_brightness"],
+      // Lumina 0.13
+      ["evening_brightness", "number", "s_evening_brightness"],
       ["night_brightness", "number", "s_night_brightness", "h_night_brightness"],
       ["day_color_temp", "number", "s_day_color_temp", "h_color_temp"],
+      ["evening_color_temp", "number", "s_evening_color_temp", "h_color_temp"],
       ["night_color_temp", "number", "s_night_color_temp", "h_color_temp"],
       ["light_off_delay", "number", "s_light_off_delay"],
       ["night_light_off_delay", "number", "s_night_light_off_delay"],
@@ -769,6 +777,8 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
     id: "night", label: "tab_night", icon: "moon", rows: [
       ["forced_night", "switch", "s_forced_night", "h_forced_night"],
       ["sleeping", "switch", "s_sleeping", "h_sleeping"],
+      // Lumina 0.13
+      ["evening_start", "time", "s_evening_start", "h_evening_window"],
       ["night_start", "time", "s_night_start", "h_night_window"],
       ["night_end", "time", "s_night_end"],
       // Lumina 0.11, avec Workday ou un calendrier de vacances

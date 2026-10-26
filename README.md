@@ -27,7 +27,7 @@ Une pièce sans ventilateur ni clim n'affiche que la lumière, et les réglages 
 | Pastille **Auto** | Met l'automatisme du groupe en pause : le panneau disparaît tant que Lumina ne le gère plus, et revient dès que l'automatisme est réactivé (bouton **Réactiver** ou réglages) |
 | Pastille **Manuel** | Rend la main à Lumina tout de suite |
 | Valeur d'un panneau | Ouvre la fiche de l'entité |
-| Pastille **Jour / Nuit** | Force la nuit (« Nuit maintenant »), ou l'annule |
+| Pastille **Jour / Soirée / Nuit** | Force la nuit (« Nuit maintenant »), ou l'annule |
 | Bouton **Sommeil** | Met la pièce en sommeil, ou la réveille (Lumina 0.10) |
 | Roue dentée | Réglages de la pièce, par onglets : lumière, ventilateur, clim, nuit, présence |
 
@@ -39,7 +39,7 @@ Le curseur se manie aussi au clavier (flèches, Origine, Fin), et la carte suit 
 
 [Lumina](https://github.com/phabrys/lumina) **0.6.0 ou plus récent** : la carte lit les entités pilotées et les comptes à rebours que Lumina publie depuis cette version, et utilise son bouton « Rendre la main ».
 
-Les fonctions plus récentes apparaissent dès que Lumina les fournit : « Ventilateurs à allumer » avec Lumina 0.7.0, clims, ventilateurs pendant la clim et contrôle manuel jusqu'au matin avec Lumina **0.8.0**. Avec Lumina **0.9.2**, la carte sait quel groupe est en manuel jusqu'au matin et lequel ne l'est que pour la durée réglée. Le sommeil (bouton, phrase, réglages du geste et de la veilleuse) apparaît avec Lumina **0.10.0**. Les fins de nuit des jours de repos et de vacances apparaissent avec Lumina **0.11.0**, quand la pièce a un capteur Workday ou un calendrier de vacances.
+Les fonctions plus récentes apparaissent dès que Lumina les fournit : « Ventilateurs à allumer » avec Lumina 0.7.0, clims, ventilateurs pendant la clim et contrôle manuel jusqu'au matin avec Lumina **0.8.0**. Avec Lumina **0.9.2**, la carte sait quel groupe est en manuel jusqu'au matin et lequel ne l'est que pour la durée réglée. Le sommeil (bouton, phrase, réglages du geste et de la veilleuse) apparaît avec Lumina **0.10.0**. Les fins de nuit des jours de repos et de vacances apparaissent avec Lumina **0.11.0**, quand la pièce a un capteur Workday ou un calendrier de vacances. La soirée (pastille et réglages) apparaît avec Lumina **0.13.0**.
 
 ## Installation
 
