@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 — 2026-10-25
+
+- Clavier : le focus reste sur l'élément en cours après chaque mise à jour de la carte (changement d'état, − / +, curseur…), au lieu de sortir de la carte. En ouvrant les réglages, il passe au bouton Retour, et à la roue dentée en les fermant.
+- Onglets des réglages : les flèches, Origine et Fin passent d'un onglet à l'autre ; seul l'onglet choisi est dans l'ordre de tabulation.
+- Lecteurs d'écran : les boutons − / + des réglages disent ce qu'ils règlent (« Augmenter : Extinction après ton départ »), la valeur ouvre la fiche au clavier, les pastilles Auto / Manuel annoncent leur effet, le curseur annonce « 44 % ».
+- Curseur au clavier : la nouvelle valeur s'affiche tout de suite, sans attendre la réponse de Home Assistant.
+
 ## 0.6.0 — 2026-10-25
 
 - Réglages : les délais s'affichent en durée lisible (« 15 min », « 2 min 30 s ») au lieu de secondes brutes ; la valeur brute reste en infobulle. Les boutons − / + avancent par durées rondes (30 s, 5 min, 15 min…).

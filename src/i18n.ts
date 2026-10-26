@@ -141,6 +141,8 @@ const fr = {
   notes_more: "+{n}",
   notes_more_label: "Afficher toutes les notes",
   notes_less: "Moins",
+  step_down: "Diminuer : {name}",
+  step_up: "Augmenter : {name}",
   // Onglets de réglages
   tab_lights: "Lumière",
   tab_fans: "Ventilateur",
@@ -365,6 +367,8 @@ const en: Strings = {
   notes_more: "+{n}",
   notes_more_label: "Show all notes",
   notes_less: "Less",
+  step_down: "Decrease: {name}",
+  step_up: "Increase: {name}",
   tab_lights: "Light",
   tab_fans: "Fan",
   tab_climate: "AC",

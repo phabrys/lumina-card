@@ -1,4 +1,4 @@
-/*! Lumina Card 0.6.0 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.6.1 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -177,6 +177,8 @@ const fr = {
     notes_more: "+{n}",
     notes_more_label: "Afficher toutes les notes",
     notes_less: "Moins",
+    step_down: "Diminuer : {name}",
+    step_up: "Augmenter : {name}",
     // Onglets de réglages
     tab_lights: "Lumière",
     tab_fans: "Ventilateur",
@@ -398,6 +400,8 @@ const en = {
     notes_more: "+{n}",
     notes_more_label: "Show all notes",
     notes_less: "Less",
+    step_down: "Decrease: {name}",
+    step_up: "Increase: {name}",
     tab_lights: "Light",
     tab_fans: "Fan",
     tab_climate: "AC",
@@ -1781,6 +1785,23 @@ function formatValue(value, step, language) {
  * les comptes à rebours : si cette clé ne change pas d'une seconde à l'autre,
  * il suffit de mettre ces textes à jour.
  */
+/**
+ * Sélecteur qui retrouve un élément après un redessin, par ses attributs data-*
+ * et son rôle : le focus du clavier ne se perd pas à chaque mise à jour.
+ */
+function focusSelector(element) {
+    if (!element?.attributes)
+        return undefined;
+    const attrs = [...element.attributes]
+        .filter((attr) => attr.name.startsWith("data-") || attr.name === "role")
+        .map((attr) => `[${attr.name}="${CSS.escape(attr.value)}"]`);
+    return attrs.length ? element.tagName.toLowerCase() + attrs.join("") : undefined;
+}
+/** Après ouverture ou fermeture des réglages, le focus passe au bouton qui fait l'inverse. */
+const FOCUS_FALLBACK = {
+    settings: '[data-action="close"]',
+    close: '[data-action="settings"]',
+};
 function tickKey(view) {
     return JSON.stringify({ ...view, now: { ...view.now, text: "" }, notes: view.notes.length });
 }
@@ -1889,12 +1910,25 @@ class LuminaCard extends BaseElement {
         const focused = this._root.activeElement;
         if (focused?.matches?.("input"))
             return;
+        const selector = focusSelector(focused);
         this._root.innerHTML = `<style>${STYLES}</style><ha-card>${body}</ha-card>`;
+        if (selector)
+            this._restoreFocus(selector, focused.dataset.action);
         this._drawnKey = this._settingsOpen ? undefined : tickKey(view);
         if (view.ticking)
             this._startTick();
         else
             this._stopTick();
+    }
+    _restoreFocus(selector, action) {
+        let target = this._root.querySelector(selector);
+        if (!target && action && FOCUS_FALLBACK[action])
+            target = this._root.querySelector(FOCUS_FALLBACK[action]);
+        // Bouton − / + désactivé en butée : le focus reste dans le même réglage
+        if (target && target.disabled) {
+            target = target.parentElement?.querySelector("button:not(:disabled)") ?? null;
+        }
+        target?.focus({ preventScroll: true });
     }
     _renderMain(view, hasSettings) {
         const t = translator(languageOf(this._hass));
@@ -1976,7 +2010,8 @@ class LuminaCard extends BaseElement {
         const pillTitle = pane.auto === "manual" ? t("tap_resume") : pane.auto === "paused" ? t("tap_enable") : t("tap_pause");
         const pillIcon = pane.auto === "auto" ? "auto" : pane.auto === "manual" ? "hand" : "pause";
         const pill = pane.autoEntity
-            ? `<button class="pill pill-${pane.auto}" data-action="auto" data-kind="${pane.kind}" title="${esc(pillTitle)}">${svg(pillIcon)}${esc(pillLabel)}</button>`
+            ? `<button class="pill pill-${pane.auto}" data-action="auto" data-kind="${pane.kind}" title="${esc(pillTitle)}"
+          aria-label="${esc(`${pane.title} : ${pillLabel}. ${pillTitle}`)}">${svg(pillIcon)}${esc(pillLabel)}</button>`
             : "";
         const level = pane.level ?? (pane.on ? 100 : 0);
         const language = languageOf(this._hass);
@@ -1993,7 +2028,7 @@ class LuminaCard extends BaseElement {
         </div>`
             : pane.level !== null
                 ? `<div class="slider ${pane.level === 0 ? "zero" : ""}" role="slider" tabindex="0"
-              aria-label="${esc(pane.title)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pane.level}"
+              aria-label="${esc(pane.title)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pane.level}" aria-valuetext="${pane.level} %"
               data-kind="${pane.kind}" style="--value:${pane.level}">
               <div class="slider-fill"></div><div class="slider-thumb"></div>
             </div>`
@@ -2021,7 +2056,8 @@ class LuminaCard extends BaseElement {
         const current = tabs.find((tab) => tab.id === this._tab) ?? tabs[0];
         this._tab = current.id;
         const nav = `<div class="tabs" role="tablist">${tabs
-            .map((tab) => `<button class="tab" role="tab" data-action="tab" data-tab="${tab.id}" aria-selected="${tab.id === current.id}"
+            .map((tab) => `<button class="tab" role="tab" id="tab-${tab.id}" data-action="tab" data-tab="${tab.id}"
+            aria-selected="${tab.id === current.id}" aria-controls="tabpanel" tabindex="${tab.id === current.id ? 0 : -1}"
             title="${esc(tab.label)}" aria-label="${esc(tab.label)}">${svg(tab.icon)}<span>${esc(tab.label)}</span></button>`)
             .join("")}</div>`;
         const rows = current.rows.map((row) => this._renderRow(row, language, t)).join("");
@@ -2032,7 +2068,7 @@ class LuminaCard extends BaseElement {
           <div class="name">${esc(t("settings"))}<span class="subtitle">${esc(view.name)}</span></div>
         </header>
         ${nav}
-        <div class="rows" role="tabpanel">${rows}</div>
+        <div class="rows" role="tabpanel" id="tabpanel" aria-labelledby="tab-${current.id}">${rows}</div>
       </div>`;
     }
     _renderRow(row, language, t) {
@@ -2061,7 +2097,7 @@ class LuminaCard extends BaseElement {
             aria-pressed="${state.state === option}">${esc(label)}</button>`;
             })
                 .join("");
-            return `<div class="row stacked">${text}<div class="segmented">${buttons}</div></div>`;
+            return `<div class="row stacked">${text}<div class="segmented" role="group" aria-label="${esc(row.label)}">${buttons}</div></div>`;
         }
         // Réglage numérique
         const a = state.attributes;
@@ -2075,15 +2111,15 @@ class LuminaCard extends BaseElement {
         const duration = formatDuration(value, unit, t);
         const raw = `${formatValue(value, step, language)}${unit ? ` ${unit}` : ""}`;
         return `<div class="row">${text}
-      <div class="stepper">
+      <div class="stepper" role="group" aria-label="${esc(row.label)}">
         <button data-action="step" data-dir="-1" data-entity="${esc(row.entity)}" ${value <= min ? "disabled" : ""}
-          aria-label="−">${svg("minus")}</button>
-        <div class="stepper-value ${pending !== undefined ? "pending" : ""}" data-action="more-info" data-entity="${esc(row.entity)}"
-          ${duration ? `title="${esc(raw)}"` : ""}>
+          aria-label="${esc(t("step_down", { name: row.label }))}">${svg("minus")}</button>
+        <button class="stepper-value ${pending !== undefined ? "pending" : ""}" data-action="more-info" data-entity="${esc(row.entity)}"
+          ${duration ? `title="${esc(raw)}"` : ""} aria-label="${esc(`${row.label} : ${duration ?? raw}`)}">
           <span>${esc(duration ?? raw).replace(/ /g, "&nbsp;")}</span>
-        </div>
+        </button>
         <button data-action="step" data-dir="1" data-entity="${esc(row.entity)}" ${value >= max ? "disabled" : ""}
-          aria-label="+">${svg("plus")}</button>
+          aria-label="${esc(t("step_up", { name: row.label }))}">${svg("plus")}</button>
       </div></div>`;
     }
     // --- Comptes à rebours ------------------------------------------------------
@@ -2355,11 +2391,17 @@ class LuminaCard extends BaseElement {
         slider.style.setProperty("--value", String(value));
         slider.classList.toggle("zero", value === 0);
         slider.setAttribute("aria-valuenow", String(value));
+        slider.setAttribute("aria-valuetext", `${value} %`);
         const valueLabel = slider.closest(".pane")?.querySelector(".value");
         if (valueLabel)
             valueLabel.textContent = `${value} %`;
     }
     _onKeyDown(event) {
+        const tab = event.target.closest('[role="tab"]');
+        if (tab) {
+            this._onTabKey(event, tab);
+            return;
+        }
         const slider = event.target.closest(".slider");
         if (!slider)
             return;
@@ -2381,12 +2423,27 @@ class LuminaCard extends BaseElement {
             return;
         event.preventDefault();
         this._pending[kind] = value;
-        this._commit(kind, false);
+        // La vue est recalculée avec la nouvelle valeur, puis redessinée
+        this._commit(kind);
+    }
+    /** Onglets des réglages : flèches, Origine et Fin passent d'un onglet à l'autre. */
+    _onTabKey(event, tab) {
+        const tabs = [...this._root.querySelectorAll('[role="tab"]')];
+        const index = tabs.indexOf(tab);
+        const next = event.key === "ArrowRight" ? tabs[(index + 1) % tabs.length]
+            : event.key === "ArrowLeft" ? tabs[(index - 1 + tabs.length) % tabs.length]
+                : event.key === "Home" ? tabs[0]
+                    : event.key === "End" ? tabs[tabs.length - 1]
+                        : undefined;
+        if (!next)
+            return;
+        event.preventDefault();
+        this._tab = next.dataset.tab;
         this._draw();
-        this._root.querySelector(`.slider[data-kind="${kind}"]`)?.focus();
+        this._root.querySelector(`[role="tab"][data-tab="${this._tab}"]`)?.focus({ preventScroll: true });
     }
     /** Envoie la valeur du curseur et garde l'affichage le temps de la réponse. */
-    _commit(kind, redraw = true) {
+    _commit(kind) {
         const value = this._pending[kind];
         this._dragging = undefined;
         const pane = this._pane(kind);
@@ -2418,10 +2475,8 @@ class LuminaCard extends BaseElement {
             this._signature = [];
             this._render();
         }, 2500);
-        if (redraw) {
-            this._signature = [];
-            this._render();
-        }
+        this._signature = [];
+        this._render();
     }
 }
 
@@ -2520,5 +2575,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.6.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.6.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }
