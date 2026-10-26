@@ -87,13 +87,13 @@ Les sources sont en TypeScript, dans `src/`. Il n'y a aucune dépendance à l'ex
 
 ```bash
 npm install
-npm test                       # build + tests du modèle d'affichage
+npm test                       # build + tests du modèle et de la carte
 python3 -m http.server 8765    # puis http://localhost:8765/demo/
 ```
 
 La page `demo/` affiche la carte dans ses principaux états, en thème clair et sombre, avec un faux Home Assistant.
 
-`src/model.ts` décide de ce qui est affiché à un instant donné, sans toucher au DOM : c'est la partie couverte par les tests. `src/card.ts` dessine et transmet les gestes à Home Assistant.
+`src/model.ts` décide de ce qui est affiché à un instant donné, sans toucher au DOM (`test/model.test.mjs`). `src/card.ts` dessine et transmet les gestes à Home Assistant ; ses tests (`test/card.test.mjs`) tournent dans un DOM simulé par [happy-dom](https://github.com/capricorn86/happy-dom), avec une horloge simulée pour les envois différés et les comptes à rebours. happy-dom ne sert qu'aux tests : la carte n'a toujours aucune dépendance.
 
 Les versions sont publiées automatiquement : quand la CI réussit sur `main` avec un nouveau numéro de version dans `package.json`, la release GitHub est créée à partir du `CHANGELOG.md`, avec `lumina-card.js` en pièce jointe.
 
