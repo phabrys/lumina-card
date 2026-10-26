@@ -191,6 +191,21 @@ test("options : compact, hide_settings", () => {
   const { root } = mount({ climate: true }, { compact: true, hide_settings: true });
   assert.ok(!$(root, '[data-action="settings"]'), "roue dentée affichée");
   assert.ok(!$(root, ".slider"), "curseur affiché");
-  assert.deepEqual([...root.querySelectorAll(".chip .value")].map((v) => v.textContent), ["70 %", "66 %", "Froid · 24,0 °C"]);
+  assert.deepEqual([...root.querySelectorAll(".chip .value")].map((v) => v.textContent), ["70 %", "66 %", "Froid"]);
   assert.equal(card.getCardSize(), 2);
+});
+
+test("compact : la consigne de la clim se règle depuis la pastille", async () => {
+  const { root, calls } = mount({ climate: true }, { compact: true });
+  const minus = '.chip.pane-climate [data-action="setpoint"][data-dir="-1"]';
+  $(root, minus).focus();
+  $(root, minus).click();
+  $(root, minus).click();
+  assert.match($(root, ".chip.pane-climate .stepper-value").textContent, /23,0/);
+  assert.equal(root.activeElement?.dataset.dir, "-1");
+  mock.timers.tick(700);
+  await flush();
+  assert.deepEqual(calls, [
+    { domain: "climate", service: "set_temperature", data: { entity_id: ["climate.chambre"], temperature: 23 } },
+  ]);
 });

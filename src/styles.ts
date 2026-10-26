@@ -538,6 +538,8 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
 .pane.chip .pane-icon svg { width: 20px; height: 20px; }
 .pane.chip .pane-value { flex: 1; }
 .pane.chip .value { font-size: 1rem; }
+.pane.chip .setpoint { flex: none; gap: 0; }
+.pane.chip .setpoint .stepper-value { min-width: 0; padding: 0 2px; font-size: 0.9rem; }
 .chip-manual {
   display: grid;
   place-items: center;

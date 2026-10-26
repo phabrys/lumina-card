@@ -1,4 +1,4 @@
-/*! Lumina Card 0.7.1 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.8.0 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -1744,6 +1744,8 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
 .pane.chip .pane-icon svg { width: 20px; height: 20px; }
 .pane.chip .pane-value { flex: 1; }
 .pane.chip .value { font-size: 1rem; }
+.pane.chip .setpoint { flex: none; gap: 0; }
+.pane.chip .setpoint .stepper-value { min-width: 0; padding: 0 2px; font-size: 0.9rem; }
 .chip-manual {
   display: grid;
   place-items: center;
@@ -2055,10 +2057,8 @@ class LuminaCard extends BaseElement {
      * qui ouvre la fiche et, en contrôle manuel, une main pour rendre la main.
      */
     _renderChip(pane, t) {
-        const sp = pane.setpoint;
-        const value = sp
-            ? `${pane.value} · ${formatValue(sp.value, sp.step, languageOf(this._hass))} °C`
-            : pane.value;
+        const value = pane.value;
+        const setpoint = pane.setpoint ? this._renderSetpoint(pane.setpoint, t) : "";
         const manual = pane.auto === "manual" && pane.autoEntity
             ? `<button class="chip-manual" data-action="auto" data-kind="${pane.kind}" title="${esc(`${pane.hint}. ${t("tap_resume")}`)}"
           aria-label="${esc(`${pane.title} : ${t("pill_manual")}. ${t("tap_resume")}`)}">${svg("hand")}</button>`
@@ -2072,8 +2072,22 @@ class LuminaCard extends BaseElement {
           title="${esc(pane.hint)}" aria-label="${esc(`${pane.title} : ${value}`)}">
           <span class="value">${esc(value)}</span>
         </button>
+        ${setpoint}
         ${manual}
       </section>`;
+    }
+    /** Consigne de la clim : − / +, envoyée après une pause (voir _setpoint). */
+    _renderSetpoint(sp, t) {
+        const language = languageOf(this._hass);
+        return `<div class="stepper setpoint" role="group" aria-label="${esc(t("setpoint"))}">
+        <button data-action="setpoint" data-dir="-1" ${sp.value <= sp.min ? "disabled" : ""}
+          title="${esc(t("setpoint_down"))}" aria-label="${esc(t("setpoint_down"))}">${svg("minus")}</button>
+        <div class="stepper-value ${this._pending.climate !== undefined ? "pending" : ""}">
+          <span>${esc(formatValue(sp.value, sp.step, language))}&nbsp;°C</span>
+        </div>
+        <button data-action="setpoint" data-dir="1" ${sp.value >= sp.max ? "disabled" : ""}
+          title="${esc(t("setpoint_up"))}" aria-label="${esc(t("setpoint_up"))}">${svg("plus")}</button>
+      </div>`;
     }
     _renderPane(pane, t) {
         const icon = paneIcon(pane);
@@ -2085,18 +2099,8 @@ class LuminaCard extends BaseElement {
           aria-label="${esc(`${pane.title} : ${pillLabel}. ${pillTitle}`)}">${svg(pillIcon)}${esc(pillLabel)}</button>`
             : "";
         const level = pane.level ?? (pane.on ? 100 : 0);
-        const language = languageOf(this._hass);
-        const sp = pane.setpoint;
-        const slider = sp
-            ? `<div class="stepper setpoint" role="group" aria-label="${esc(t("setpoint"))}">
-          <button data-action="setpoint" data-dir="-1" ${sp.value <= sp.min ? "disabled" : ""}
-            title="${esc(t("setpoint_down"))}" aria-label="${esc(t("setpoint_down"))}">${svg("minus")}</button>
-          <div class="stepper-value ${this._pending.climate !== undefined ? "pending" : ""}">
-            <span>${esc(formatValue(sp.value, sp.step, language))}&nbsp;°C</span>
-          </div>
-          <button data-action="setpoint" data-dir="1" ${sp.value >= sp.max ? "disabled" : ""}
-            title="${esc(t("setpoint_up"))}" aria-label="${esc(t("setpoint_up"))}">${svg("plus")}</button>
-        </div>`
+        const slider = pane.setpoint
+            ? this._renderSetpoint(pane.setpoint, t)
             : pane.level !== null
                 ? `<div class="slider ${pane.level === 0 ? "zero" : ""}" role="slider" tabindex="0"
               aria-label="${esc(pane.title)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pane.level}" aria-valuetext="${pane.level} %"
@@ -2657,5 +2661,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.7.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.8.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

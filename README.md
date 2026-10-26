@@ -77,7 +77,7 @@ Options facultatives, aussi réglables depuis l'éditeur :
 
 | Option | Effet |
 |---|---|
-| `compact: true` | Chaque panneau devient une pastille : icône pour allumer ou éteindre, valeur (et consigne de la clim) qui ouvre la fiche, main pour rendre la main en contrôle manuel. Pas de curseur ni d'indication : pratique pour un tableau de bord qui regroupe toutes les pièces. |
+| `compact: true` | Chaque panneau devient une pastille : icône pour allumer ou éteindre, valeur qui ouvre la fiche, − / + pour la consigne de la clim, main pour rendre la main en contrôle manuel. Pas de curseur ni d'indication : pratique pour un tableau de bord qui regroupe toutes les pièces. |
 | `hide_panes: [fans, climate]` | Retire des panneaux de la carte (`lights`, `fans`, `climate`). Lumina continue de gérer ces groupes, et la phrase « maintenant » en parle toujours. |
 | `hide_settings: true` | Retire la roue dentée, par exemple sur une tablette murale partagée. |
 

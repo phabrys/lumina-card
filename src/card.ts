@@ -17,6 +17,7 @@ import {
   type RoomView,
   type SettingRow,
   type SettingTab,
+  type Setpoint,
 } from "./model.js";
 import { STYLES } from "./styles.js";
 
@@ -338,10 +339,8 @@ export class LuminaCard extends BaseElement {
    * qui ouvre la fiche et, en contrôle manuel, une main pour rendre la main.
    */
   private _renderChip(pane: Pane, t: ReturnType<typeof translator>): string {
-    const sp = pane.setpoint;
-    const value = sp
-      ? `${pane.value} · ${formatValue(sp.value, sp.step, languageOf(this._hass!))} °C`
-      : pane.value;
+    const value = pane.value;
+    const setpoint = pane.setpoint ? this._renderSetpoint(pane.setpoint, t) : "";
     const manual = pane.auto === "manual" && pane.autoEntity
       ? `<button class="chip-manual" data-action="auto" data-kind="${pane.kind}" title="${esc(`${pane.hint}. ${t("tap_resume")}`)}"
           aria-label="${esc(`${pane.title} : ${t("pill_manual")}. ${t("tap_resume")}`)}">${svg("hand")}</button>`
@@ -355,8 +354,23 @@ export class LuminaCard extends BaseElement {
           title="${esc(pane.hint)}" aria-label="${esc(`${pane.title} : ${value}`)}">
           <span class="value">${esc(value)}</span>
         </button>
+        ${setpoint}
         ${manual}
       </section>`;
+  }
+
+  /** Consigne de la clim : − / +, envoyée après une pause (voir _setpoint). */
+  private _renderSetpoint(sp: Setpoint, t: ReturnType<typeof translator>): string {
+    const language = languageOf(this._hass!);
+    return `<div class="stepper setpoint" role="group" aria-label="${esc(t("setpoint"))}">
+        <button data-action="setpoint" data-dir="-1" ${sp.value <= sp.min ? "disabled" : ""}
+          title="${esc(t("setpoint_down"))}" aria-label="${esc(t("setpoint_down"))}">${svg("minus")}</button>
+        <div class="stepper-value ${this._pending.climate !== undefined ? "pending" : ""}">
+          <span>${esc(formatValue(sp.value, sp.step, language))}&nbsp;°C</span>
+        </div>
+        <button data-action="setpoint" data-dir="1" ${sp.value >= sp.max ? "disabled" : ""}
+          title="${esc(t("setpoint_up"))}" aria-label="${esc(t("setpoint_up"))}">${svg("plus")}</button>
+      </div>`;
   }
 
   private _renderPane(pane: Pane, t: ReturnType<typeof translator>): string {
@@ -371,18 +385,8 @@ export class LuminaCard extends BaseElement {
           aria-label="${esc(`${pane.title} : ${pillLabel}. ${pillTitle}`)}">${svg(pillIcon)}${esc(pillLabel)}</button>`
       : "";
     const level = pane.level ?? (pane.on ? 100 : 0);
-    const language = languageOf(this._hass!);
-    const sp = pane.setpoint;
-    const slider = sp
-      ? `<div class="stepper setpoint" role="group" aria-label="${esc(t("setpoint"))}">
-          <button data-action="setpoint" data-dir="-1" ${sp.value <= sp.min ? "disabled" : ""}
-            title="${esc(t("setpoint_down"))}" aria-label="${esc(t("setpoint_down"))}">${svg("minus")}</button>
-          <div class="stepper-value ${this._pending.climate !== undefined ? "pending" : ""}">
-            <span>${esc(formatValue(sp.value, sp.step, language))}&nbsp;°C</span>
-          </div>
-          <button data-action="setpoint" data-dir="1" ${sp.value >= sp.max ? "disabled" : ""}
-            title="${esc(t("setpoint_up"))}" aria-label="${esc(t("setpoint_up"))}">${svg("plus")}</button>
-        </div>`
+    const slider = pane.setpoint
+      ? this._renderSetpoint(pane.setpoint, t)
       : pane.level !== null
         ? `<div class="slider ${pane.level === 0 ? "zero" : ""}" role="slider" tabindex="0"
               aria-label="${esc(pane.title)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pane.level}" aria-valuetext="${pane.level} %"

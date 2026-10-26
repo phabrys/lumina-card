@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 — 2026-10-26
+
+- Option `compact` : la consigne de la clim se règle depuis la pastille, avec − / + comme dans le panneau complet (« Froid  − 24,0 °C + »). Elle est envoyée une fois que tu arrêtes d'appuyer.
+
 ## 0.7.1 — 2026-10-26
 
 - Réglages : la valeur entre les boutons − et + n'a plus le fond gris arrondi des boutons, apparu en 0.6.1 quand elle est devenue un bouton pour le clavier.
