@@ -95,6 +95,16 @@ const FOCUS_FALLBACK: Record<string, string> = {
   close: '[data-action="settings"]',
 };
 
+const PANE_ICONS: Record<PaneKind, [IconName, IconName]> = {
+  lights: ["lightbulb", "lightbulbOff"],
+  fans: ["fan", "fanOff"],
+  climate: ["climate", "climateOff"],
+};
+
+function paneIcon(pane: Pane): IconName {
+  return PANE_ICONS[pane.kind][pane.on ? 0 : 1];
+}
+
 export function tickKey(view: RoomView): string {
   return JSON.stringify({ ...view, now: { ...view.now, text: "" }, notes: view.notes.length });
 }
@@ -158,7 +168,7 @@ export class LuminaCard extends BaseElement {
   }
 
   getCardSize(): number {
-    return this._settingsOpen ? 8 : 4;
+    return this._settingsOpen ? 8 : this._config?.compact ? 2 : 4;
   }
 
   getGridOptions() {
@@ -209,10 +219,11 @@ export class LuminaCard extends BaseElement {
     const view = this._view!;
     const t = translator(languageOf(this._hass!));
     const tabs = settingTabs(view.entities, t);
+    const hasSettings = tabs.length > 0 && !this._config!.hide_settings;
     const body =
-      this._settingsOpen && tabs.length && view.status === "ok"
+      this._settingsOpen && hasSettings && view.status === "ok"
         ? this._renderSettings(view, tabs)
-        : this._renderMain(view, tabs.length > 0);
+        : this._renderMain(view, hasSettings);
 
     // Les champs de réglage en cours d'édition ne sont pas redessinés.
     const focused = this._root.activeElement as HTMLElement | null;
@@ -275,7 +286,9 @@ export class LuminaCard extends BaseElement {
     }
 
     const panes = view.panes.length
-      ? `<div class="panes">${view.panes.map((pane) => this._renderPane(pane, t)).join("")}</div>`
+      ? this._config!.compact
+        ? `<div class="panes compact">${view.panes.map((pane) => this._renderChip(pane, t)).join("")}</div>`
+        : `<div class="panes">${view.panes.map((pane) => this._renderPane(pane, t)).join("")}</div>`
       : "";
     const ambient = view.ambient.length
       ? `<div class="ambient">${view.ambient
@@ -320,13 +333,34 @@ export class LuminaCard extends BaseElement {
       </button>`;
   }
 
+  /**
+   * Panneau réduit (option `compact`) : icône pour allumer ou éteindre, valeur
+   * qui ouvre la fiche et, en contrôle manuel, une main pour rendre la main.
+   */
+  private _renderChip(pane: Pane, t: ReturnType<typeof translator>): string {
+    const sp = pane.setpoint;
+    const value = sp
+      ? `${pane.value} · ${formatValue(sp.value, sp.step, languageOf(this._hass!))} °C`
+      : pane.value;
+    const manual = pane.auto === "manual" && pane.autoEntity
+      ? `<button class="chip-manual" data-action="auto" data-kind="${pane.kind}" title="${esc(`${pane.hint}. ${t("tap_resume")}`)}"
+          aria-label="${esc(`${pane.title} : ${t("pill_manual")}. ${t("tap_resume")}`)}">${svg("hand")}</button>`
+      : "";
+    const style = `--level:${pane.level ?? (pane.on ? 100 : 0)};${pane.spin ? `--spin:${pane.spin.toFixed(2)}s;` : ""}`;
+    return `
+      <section class="pane chip pane-${pane.kind} ${pane.on ? "on" : ""}" ${pane.mode ? `data-mode="${esc(pane.mode)}"` : ""} style="${style}">
+        <button class="pane-icon" data-action="toggle" data-kind="${pane.kind}"
+          aria-pressed="${pane.on}" title="${esc(t("toggle"))}" aria-label="${esc(`${pane.title} : ${t("toggle")}`)}">${svg(paneIcon(pane))}</button>
+        <button class="pane-value" data-action="more-info" data-entity="${esc(pane.entities[0])}"
+          title="${esc(pane.hint)}" aria-label="${esc(`${pane.title} : ${value}`)}">
+          <span class="value">${esc(value)}</span>
+        </button>
+        ${manual}
+      </section>`;
+  }
+
   private _renderPane(pane: Pane, t: ReturnType<typeof translator>): string {
-    const icons: Record<PaneKind, [IconName, IconName]> = {
-      lights: ["lightbulb", "lightbulbOff"],
-      fans: ["fan", "fanOff"],
-      climate: ["climate", "climateOff"],
-    };
-    const icon = icons[pane.kind][pane.on ? 0 : 1];
+    const icon = paneIcon(pane);
     const pillLabel =
       pane.auto === "auto" ? t("pill_auto") : pane.auto === "manual" ? t("pill_manual") : t("pill_paused");
     const pillTitle =

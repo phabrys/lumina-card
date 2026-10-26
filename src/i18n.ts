@@ -229,6 +229,9 @@ const fr = {
   e_device: "Pièce Lumina",
   e_name: "Nom affiché",
   e_hide_ambient: "Masquer température, humidité et luminosité",
+  e_compact: "Affichage compact (sans curseurs ni indications)",
+  e_hide_panes: "Groupes masqués sur cette carte",
+  e_hide_settings: "Masquer la roue dentée des réglages",
 };
 
 type Strings = typeof fr;
@@ -451,6 +454,9 @@ const en: Strings = {
   e_device: "Lumina room",
   e_name: "Display name",
   e_hide_ambient: "Hide temperature, humidity and light level",
+  e_compact: "Compact layout (no sliders or hints)",
+  e_hide_panes: "Groups hidden on this card",
+  e_hide_settings: "Hide the settings gear",
 };
 
 export type StringKey = keyof Strings;

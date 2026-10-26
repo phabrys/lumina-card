@@ -1,4 +1,4 @@
-/*! Lumina Card 0.6.1 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.7.0 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -265,6 +265,9 @@ const fr = {
     e_device: "Pièce Lumina",
     e_name: "Nom affiché",
     e_hide_ambient: "Masquer température, humidité et luminosité",
+    e_compact: "Affichage compact (sans curseurs ni indications)",
+    e_hide_panes: "Groupes masqués sur cette carte",
+    e_hide_settings: "Masquer la roue dentée des réglages",
 };
 const en = {
     unavailable: "Lumina isn't responding for this room",
@@ -484,6 +487,9 @@ const en = {
     e_device: "Lumina room",
     e_name: "Display name",
     e_hide_ambient: "Hide temperature, humidity and light level",
+    e_compact: "Compact layout (no sliders or hints)",
+    e_hide_panes: "Groups hidden on this card",
+    e_hide_settings: "Hide the settings gear",
 };
 function translator(language) {
     const table = (language ?? "fr").toLowerCase().startsWith("fr") ? fr : en;
@@ -807,12 +813,14 @@ function buildView(hass, config, now, pending = {}) {
         ? t(wake ? "hint_manual_wake" : "hint_manual_morning")
         : t("hint_manual", { h: until ? clock(until) : "…" });
     const mode = { night: nightRules, sleeping, presumed };
-    // Un groupe que Lumina ne gère plus (automatisme en pause) n'a pas de panneau
-    if (hasLights && !lightsPaused)
+    // Un groupe que Lumina ne gère plus (automatisme en pause) n'a pas de panneau,
+    // ni un groupe masqué dans la configuration de la carte
+    const shown = (kind) => !config.hide_panes?.includes(kind);
+    if (hasLights && !lightsPaused && shown("lights"))
         panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), mode, language, pending.lights));
-    if (hasFans && !fansPaused)
+    if (hasFans && !fansPaused && shown("fans"))
         panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), mode, language, pending.fans));
-    if (hasClimate && !climatePaused)
+    if (hasClimate && !climatePaused && shown("climate"))
         panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), mode, pending.climate));
     return {
         status: "ok",
@@ -1716,6 +1724,36 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   font-size: 0.9rem;
 }
 
+/* Option compact : chaque panneau réduit à une pastille */
+.panes.compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pane.chip {
+  flex: 1 1 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 5px;
+  border-radius: 999px;
+}
+.pane.chip .pane-icon { width: 34px; height: 34px; flex: none; }
+.pane.chip .pane-icon svg { width: 20px; height: 20px; }
+.pane.chip .pane-value { flex: 1; }
+.pane.chip .value { font-size: 1rem; }
+.chip-manual {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  color: var(--lc-manual);
+  background: color-mix(in srgb, var(--lc-manual) 16%, transparent);
+}
+.chip-manual svg { width: 16px; height: 16px; }
+
 /* Cartes étroites : panneaux empilés, réglages sur deux lignes */
 @container lumina (max-width: 300px) {
   .row { flex-wrap: wrap; }
@@ -1802,6 +1840,14 @@ const FOCUS_FALLBACK = {
     settings: '[data-action="close"]',
     close: '[data-action="settings"]',
 };
+const PANE_ICONS = {
+    lights: ["lightbulb", "lightbulbOff"],
+    fans: ["fan", "fanOff"],
+    climate: ["climate", "climateOff"],
+};
+function paneIcon(pane) {
+    return PANE_ICONS[pane.kind][pane.on ? 0 : 1];
+}
 function tickKey(view) {
     return JSON.stringify({ ...view, now: { ...view.now, text: "" }, notes: view.notes.length });
 }
@@ -1855,7 +1901,7 @@ class LuminaCard extends BaseElement {
         return this._hass;
     }
     getCardSize() {
-        return this._settingsOpen ? 8 : 4;
+        return this._settingsOpen ? 8 : this._config?.compact ? 2 : 4;
     }
     getGridOptions() {
         return { columns: 12, min_columns: 6, rows: "auto" };
@@ -1903,9 +1949,10 @@ class LuminaCard extends BaseElement {
         const view = this._view;
         const t = translator(languageOf(this._hass));
         const tabs = settingTabs(view.entities, t);
-        const body = this._settingsOpen && tabs.length && view.status === "ok"
+        const hasSettings = tabs.length > 0 && !this._config.hide_settings;
+        const body = this._settingsOpen && hasSettings && view.status === "ok"
             ? this._renderSettings(view, tabs)
-            : this._renderMain(view, tabs.length > 0);
+            : this._renderMain(view, hasSettings);
         // Les champs de réglage en cours d'édition ne sont pas redessinés.
         const focused = this._root.activeElement;
         if (focused?.matches?.("input"))
@@ -1963,7 +2010,9 @@ class LuminaCard extends BaseElement {
             return `<div class="card tone-alert">${header}${nowLine}</div>`;
         }
         const panes = view.panes.length
-            ? `<div class="panes">${view.panes.map((pane) => this._renderPane(pane, t)).join("")}</div>`
+            ? this._config.compact
+                ? `<div class="panes compact">${view.panes.map((pane) => this._renderChip(pane, t)).join("")}</div>`
+                : `<div class="panes">${view.panes.map((pane) => this._renderPane(pane, t)).join("")}</div>`
             : "";
         const ambient = view.ambient.length
             ? `<div class="ambient">${view.ambient
@@ -1999,13 +2048,33 @@ class LuminaCard extends BaseElement {
         ${svg("sleep")}${view.sleeping ? `<span>${esc(t("sleep"))}</span>` : ""}
       </button>`;
     }
+    /**
+     * Panneau réduit (option `compact`) : icône pour allumer ou éteindre, valeur
+     * qui ouvre la fiche et, en contrôle manuel, une main pour rendre la main.
+     */
+    _renderChip(pane, t) {
+        const sp = pane.setpoint;
+        const value = sp
+            ? `${pane.value} · ${formatValue(sp.value, sp.step, languageOf(this._hass))} °C`
+            : pane.value;
+        const manual = pane.auto === "manual" && pane.autoEntity
+            ? `<button class="chip-manual" data-action="auto" data-kind="${pane.kind}" title="${esc(`${pane.hint}. ${t("tap_resume")}`)}"
+          aria-label="${esc(`${pane.title} : ${t("pill_manual")}. ${t("tap_resume")}`)}">${svg("hand")}</button>`
+            : "";
+        const style = `--level:${pane.level ?? (pane.on ? 100 : 0)};${pane.spin ? `--spin:${pane.spin.toFixed(2)}s;` : ""}`;
+        return `
+      <section class="pane chip pane-${pane.kind} ${pane.on ? "on" : ""}" ${pane.mode ? `data-mode="${esc(pane.mode)}"` : ""} style="${style}">
+        <button class="pane-icon" data-action="toggle" data-kind="${pane.kind}"
+          aria-pressed="${pane.on}" title="${esc(t("toggle"))}" aria-label="${esc(`${pane.title} : ${t("toggle")}`)}">${svg(paneIcon(pane))}</button>
+        <button class="pane-value" data-action="more-info" data-entity="${esc(pane.entities[0])}"
+          title="${esc(pane.hint)}" aria-label="${esc(`${pane.title} : ${value}`)}">
+          <span class="value">${esc(value)}</span>
+        </button>
+        ${manual}
+      </section>`;
+    }
     _renderPane(pane, t) {
-        const icons = {
-            lights: ["lightbulb", "lightbulbOff"],
-            fans: ["fan", "fanOff"],
-            climate: ["climate", "climateOff"],
-        };
-        const icon = icons[pane.kind][pane.on ? 0 : 1];
+        const icon = paneIcon(pane);
         const pillLabel = pane.auto === "auto" ? t("pill_auto") : pane.auto === "manual" ? t("pill_manual") : t("pill_paused");
         const pillTitle = pane.auto === "manual" ? t("tap_resume") : pane.auto === "paused" ? t("tap_enable") : t("tap_pause");
         const pillIcon = pane.auto === "auto" ? "auto" : pane.auto === "manual" ? "hand" : "pause";
@@ -2502,11 +2571,22 @@ class LuminaCardEditor extends EditorBase {
         this._hass = hass;
         this._render();
     }
-    _schema() {
+    _schema(t) {
         return [
             { name: "device", required: true, selector: { device: { filter: { integration: "lumina" } } } },
             { name: "name", selector: { text: {} } },
+            { name: "compact", selector: { boolean: {} } },
+            {
+                name: "hide_panes",
+                selector: {
+                    select: {
+                        multiple: true,
+                        options: ["lights", "fans", "climate"].map((kind) => ({ value: kind, label: t(`tab_${kind}`) })),
+                    },
+                },
+            },
             { name: "hide_ambient", selector: { boolean: {} } },
+            { name: "hide_settings", selector: { boolean: {} } },
         ];
     }
     _render() {
@@ -2525,8 +2605,8 @@ class LuminaCardEditor extends EditorBase {
             }
             this._form.hass = this._hass;
             this._form.data = this._config;
-            this._form.schema = this._schema();
-            this._form.computeLabel = (field) => field.name === "device" ? t("e_device") : field.name === "name" ? t("e_name") : t("e_hide_ambient");
+            this._form.schema = this._schema(t);
+            this._form.computeLabel = (field) => t(`e_${field.name}`);
             return;
         }
         // Repli sans ha-form
@@ -2550,7 +2630,7 @@ class LuminaCardEditor extends EditorBase {
     }
     _update(config) {
         // Champs vides retirés pour garder un YAML propre
-        const clean = Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined && value !== "" && value !== false));
+        const clean = Object.fromEntries(Object.entries(config).filter(([, value]) => value !== undefined && value !== "" && value !== false && !(Array.isArray(value) && !value.length)));
         this._config = clean;
         this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: clean }, bubbles: true, composed: true }));
     }
@@ -2575,5 +2655,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.6.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.7.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

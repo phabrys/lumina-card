@@ -148,6 +148,13 @@ test("teinte de la lumière et capteurs de l'ambiance", () => {
   ]);
 });
 
+test("hide_panes masque des panneaux sans toucher à la phrase", () => {
+  const hass = makeHass({ climate: true, room: { fans_override_until: inSeconds(1800) } });
+  const view = buildView(hass, { ...config, hide_panes: ["fans", "climate"] }, NOW);
+  assert.deepEqual(view.panes.map((p) => p.kind), ["lights"]);
+  assert.match(view.now.text, /^Ventilateur en manuel/);
+});
+
 test("présence maintenue par la TV", () => {
   const hass = makeHass({
     room: { presence_hold_active: true },

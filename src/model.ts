@@ -40,6 +40,12 @@ export interface CardConfig {
   entity?: string;
   name?: string;
   hide_ambient?: boolean;
+  /** Groupes sans panneau sur cette carte (Lumina continue de les gérer). */
+  hide_panes?: PaneKind[];
+  /** Pas de roue dentée : réglages inaccessibles depuis cette carte. */
+  hide_settings?: boolean;
+  /** Panneaux réduits à une pastille : icône et valeur, sans curseur ni indication. */
+  compact?: boolean;
 }
 
 // --- Entités d'une pièce -----------------------------------------------------
@@ -441,10 +447,12 @@ export function buildView(
       ? t(wake ? "hint_manual_wake" : "hint_manual_morning")
       : t("hint_manual", { h: until ? clock(until) : "…" });
   const mode: PaneMode = { night: nightRules, sleeping, presumed };
-  // Un groupe que Lumina ne gère plus (automatisme en pause) n'a pas de panneau
-  if (hasLights && !lightsPaused) panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), mode, language, pending.lights));
-  if (hasFans && !fansPaused) panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), mode, language, pending.fans));
-  if (hasClimate && !climatePaused) panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), mode, pending.climate));
+  // Un groupe que Lumina ne gère plus (automatisme en pause) n'a pas de panneau,
+  // ni un groupe masqué dans la configuration de la carte
+  const shown = (kind: PaneKind) => !config.hide_panes?.includes(kind);
+  if (hasLights && !lightsPaused && shown("lights")) panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), mode, language, pending.lights));
+  if (hasFans && !fansPaused && shown("fans")) panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), mode, language, pending.fans));
+  if (hasClimate && !climatePaused && shown("climate")) panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), mode, pending.climate));
 
   return {
     status: "ok",

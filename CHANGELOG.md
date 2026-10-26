@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 — 2026-10-25
+
+- Option `compact` : chaque panneau devient une pastille (icône, valeur, consigne de la clim), avec une main pour rendre la main en contrôle manuel. Pour un tableau de bord qui regroupe toutes les pièces.
+- Option `hide_panes` : retire la lumière, le ventilateur ou la clim de la carte, sans changer ce que Lumina en fait.
+- Option `hide_settings` : retire la roue dentée des réglages.
+- Les trois options se règlent aussi depuis l'éditeur visuel.
+
 ## 0.6.1 — 2026-10-25
 
 - Clavier : le focus reste sur l'élément en cours après chaque mise à jour de la carte (changement d'état, − / +, curseur…), au lieu de sortir de la carte. En ouvrant les réglages, il passe au bouton Retour, et à la roue dentée en les fermant.

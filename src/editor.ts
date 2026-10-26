@@ -2,6 +2,7 @@
 // Utilise le formulaire natif de Home Assistant (ha-form) quand il est
 // disponible, sinon une liste simple des pièces Lumina.
 
+import type { StringKey } from "./i18n.js";
 import { languageOf, luminaDevices, translator, type CardConfig, type Hass } from "./model.js";
 
 const EditorBase: typeof HTMLElement =
@@ -26,11 +27,22 @@ export class LuminaCardEditor extends EditorBase {
     this._render();
   }
 
-  private _schema() {
+  private _schema(t: ReturnType<typeof translator>) {
     return [
       { name: "device", required: true, selector: { device: { filter: { integration: "lumina" } } } },
       { name: "name", selector: { text: {} } },
+      { name: "compact", selector: { boolean: {} } },
+      {
+        name: "hide_panes",
+        selector: {
+          select: {
+            multiple: true,
+            options: (["lights", "fans", "climate"] as const).map((kind) => ({ value: kind, label: t(`tab_${kind}`) })),
+          },
+        },
+      },
       { name: "hide_ambient", selector: { boolean: {} } },
+      { name: "hide_settings", selector: { boolean: {} } },
     ];
   }
 
@@ -50,9 +62,8 @@ export class LuminaCardEditor extends EditorBase {
       }
       this._form.hass = this._hass;
       this._form.data = this._config;
-      this._form.schema = this._schema();
-      this._form.computeLabel = (field: { name: string }) =>
-        field.name === "device" ? t("e_device") : field.name === "name" ? t("e_name") : t("e_hide_ambient");
+      this._form.schema = this._schema(t);
+      this._form.computeLabel = (field: { name: string }) => t(`e_${field.name}` as StringKey);
       return;
     }
 
@@ -79,7 +90,9 @@ export class LuminaCardEditor extends EditorBase {
   private _update(config: CardConfig): void {
     // Champs vides retirés pour garder un YAML propre
     const clean = Object.fromEntries(
-      Object.entries(config).filter(([, value]) => value !== undefined && value !== "" && value !== false),
+      Object.entries(config).filter(
+        ([, value]) => value !== undefined && value !== "" && value !== false && !(Array.isArray(value) && !value.length),
+      ),
     ) as unknown as CardConfig;
     this._config = clean;
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: clean }, bubbles: true, composed: true }));

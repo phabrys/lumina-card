@@ -518,6 +518,36 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   font-size: 0.9rem;
 }
 
+/* Option compact : chaque panneau réduit à une pastille */
+.panes.compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pane.chip {
+  flex: 1 1 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 5px;
+  border-radius: 999px;
+}
+.pane.chip .pane-icon { width: 34px; height: 34px; flex: none; }
+.pane.chip .pane-icon svg { width: 20px; height: 20px; }
+.pane.chip .pane-value { flex: 1; }
+.pane.chip .value { font-size: 1rem; }
+.chip-manual {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 50%;
+  color: var(--lc-manual);
+  background: color-mix(in srgb, var(--lc-manual) 16%, transparent);
+}
+.chip-manual svg { width: 16px; height: 16px; }
+
 /* Cartes étroites : panneaux empilés, réglages sur deux lignes */
 @container lumina (max-width: 300px) {
   .row { flex-wrap: wrap; }

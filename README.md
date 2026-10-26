@@ -73,6 +73,14 @@ name: Chambre        # facultatif : nom affiché (par défaut, celui de la pièc
 hide_ambient: false  # facultatif : masque température, humidité et luminosité
 ```
 
+Options facultatives, aussi réglables depuis l'éditeur :
+
+| Option | Effet |
+|---|---|
+| `compact: true` | Chaque panneau devient une pastille : icône pour allumer ou éteindre, valeur (et consigne de la clim) qui ouvre la fiche, main pour rendre la main en contrôle manuel. Pas de curseur ni d'indication : pratique pour un tableau de bord qui regroupe toutes les pièces. |
+| `hide_panes: [fans, climate]` | Retire des panneaux de la carte (`lights`, `fans`, `climate`). Lumina continue de gérer ces groupes, et la phrase « maintenant » en parle toujours. |
+| `hide_settings: true` | Retire la roue dentée, par exemple sur une tablette murale partagée. |
+
 ## Développement
 
 Les sources sont en TypeScript, dans `src/`. Il n'y a aucune dépendance à l'exécution : `npm run build` compile avec `tsc` et assemble le tout dans `dist/lumina-card.js`.
