@@ -1,6 +1,6 @@
 {
   "name": "lumina-card",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Carte Home Assistant pour piloter une pièce gérée par Lumina",
   "type": "module",
   "license": "MIT",

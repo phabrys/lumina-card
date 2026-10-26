@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.0 — 2026-10-26
+
+- Réglages, onglet Clim : **Consigne en soirée** (Lumina 0.16). La clim part en froid à cette consigne à ton arrivée en soirée, et s'arrête à ton départ (0 = jamais).
+- Clim éteinte avec une consigne de soirée réglée : le panneau indique « S'allume à 25 °C à ton arrivée, en soirée » au lieu de « Lumina ne l'allume jamais ».
+
 ## 0.9.0 — 2026-10-26
 
 - Réglages, onglet Lumières : **Allumage avant le coucher du soleil** et **Extinction après le lever du soleil**, pour une pièce sans capteur de luminosité (Lumina 0.15).

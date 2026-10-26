@@ -1,4 +1,4 @@
-/*! Lumina Card 0.9.0 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.10.0 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -144,6 +144,7 @@ const fr = {
     hint_climate_untouched_night: "Lumina la laisse tourner la nuit",
     hint_climate_untouched_sleep: "Lumina la laisse tourner pendant le sommeil",
     hint_climate_never_on: "Lumina ne l'allume jamais",
+    hint_climate_evening_on: "S'allume à {v} °C à ton arrivée, en soirée",
     hint_climate_fan_only: "En ventilation, Lumina ne la touche pas",
     hint_climate_restore: "Rétablie à ton retour",
     hvac_cool: "Froid",
@@ -223,6 +224,8 @@ const fr = {
     o_climate_none: "Rien",
     s_climate_vacant_delay: "Délai avant d'agir",
     h_climate_vacant_delay: "Rétablie si quelqu'un revient dans les 2 h",
+    s_evening_climate_temperature: "Consigne en soirée",
+    h_evening_climate_temperature: "Allumée en froid à ton arrivée, arrêtée à ton départ (0 = jamais)",
     s_fans_with_climate: "Ventilateurs pendant la clim",
     o_fans_normal: "Température",
     o_fans_mix: "Brassage",
@@ -379,6 +382,7 @@ const en = {
     hint_climate_untouched_night: "Lumina leaves it running at night",
     hint_climate_untouched_sleep: "Lumina leaves it running while asleep",
     hint_climate_never_on: "Lumina never turns it on",
+    hint_climate_evening_on: "Turns on at {v} °C when you arrive, in the evening",
     hint_climate_fan_only: "In fan mode, Lumina leaves it alone",
     hint_climate_restore: "Restored when you return",
     hvac_cool: "Cool",
@@ -454,6 +458,8 @@ const en = {
     o_climate_none: "Nothing",
     s_climate_vacant_delay: "Delay before acting",
     h_climate_vacant_delay: "Restored if someone returns within 2 h",
+    s_evening_climate_temperature: "Evening setpoint",
+    h_evening_climate_temperature: "Cooling on when you arrive, off when you leave (0 = never)",
     s_fans_with_climate: "Fans while the AC runs",
     o_fans_normal: "Temperature",
     o_fans_mix: "Circulate",
@@ -835,7 +841,7 @@ function buildView(hass, config, now, pending = {}) {
     if (hasFans && !fansPaused && shown("fans"))
         panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), mode, language, pending.fans));
     if (hasClimate && !climatePaused && shown("climate"))
-        panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), mode, pending.climate));
+        panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), mode, language, pending.climate));
     return {
         status: "ok",
         name,
@@ -1028,7 +1034,7 @@ function fansPane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, 
     const step = Math.max(1, Number(states.find((s) => s?.attributes.percentage_step)?.attributes.percentage_step ?? 1));
     return { kind: "fans", title: t("fans"), entities: ids, on, level, step, value, hint, auto, autoEntity: room.auto_fans, spin };
 }
-function climatePane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, pending) {
+function climatePane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, language, pending) {
     const states = ids.map((id) => hass.states[id]).filter((s) => !!s);
     const active = states.filter(isClimateOn);
     const main = active[0] ?? states[0];
@@ -1057,14 +1063,19 @@ function climatePane(hass, room, a, t, ids, auto, manualHint, { night, presumed 
     let hint;
     const action = a.climate_vacant_action;
     const delay = num(hass, room.climate_vacant_delay);
+    // Lumina 0.16 : consigne de soirée, 0 = jamais allumée
+    const evening = num(hass, room.evening_climate_temperature);
     if (auto === "paused")
         hint = t("hint_paused");
     else if (auto === "manual")
         hint = manualHint;
     else if (a.climate_vacant_applied)
         hint = t("hint_climate_restore");
-    else if (!on)
-        hint = t("hint_climate_never_on");
+    else if (!on) {
+        hint = evening
+            ? t("hint_climate_evening_on", { v: formatNumber(evening, language, 1) })
+            : t("hint_climate_never_on");
+    }
     // Lumina ne touche pas une clim en simple ventilation (depuis 0.9.0)
     else if (mode === "fan_only")
         hint = t("hint_climate_fan_only");
@@ -1159,6 +1170,8 @@ const TABS = [
             ["climate_vacant_day", "select", "s_climate_vacant_day", "h_climate_vacant", CLIMATE_ACTIONS],
             ["climate_vacant_night", "select", "s_climate_vacant_night", "h_climate_vacant_night", CLIMATE_ACTIONS],
             ["climate_vacant_delay", "number", "s_climate_vacant_delay", "h_climate_vacant_delay"],
+            // Lumina 0.16
+            ["evening_climate_temperature", "number", "s_evening_climate_temperature", "h_evening_climate_temperature"],
             ["fans_with_climate", "select", "s_fans_with_climate", undefined, FANS_WITH_CLIMATE],
             ["fan_mix_speed", "number", "s_fan_mix_speed"],
         ],
@@ -2687,5 +2700,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.9.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.10.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

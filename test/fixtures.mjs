@@ -44,6 +44,8 @@ const KEYS = {
   evening_start: "time.lumina_chambre_debut_soiree",
   evening_brightness: "number.lumina_chambre_luminosite_soiree",
   evening_color_temp: "number.lumina_chambre_teinte_soiree",
+  // Lumina 0.16
+  evening_climate_temperature: "number.lumina_chambre_consigne_clim_soiree",
 };
 
 const CLIMATE_ACTIONS = ["off", "eco", "setback", "none"];
@@ -85,6 +87,7 @@ export function makeHass({ room = {}, states = {}, language = "fr", calls = [], 
         [KEYS.climate_vacant_delay]: number(900, "s", 0, 7200, 60),
         [KEYS.fans_with_climate]: { state: "normal", attributes: { options: ["normal", "mix", "off"] } },
         [KEYS.fan_mix_speed]: number(33, "%", 10, 100, 1),
+        [KEYS.evening_climate_temperature]: number(0, "°C", 0, 30, 0.5),
         "climate.chambre": {
           state: "cool",
           attributes: {

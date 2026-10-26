@@ -304,6 +304,12 @@ test("clim éteinte : Lumina ne l'allume jamais, pas de consigne", () => {
   assert.equal(climate.hint, "Lumina ne l'allume jamais");
 });
 
+test("clim éteinte avec consigne de soirée : s'allume à ton arrivée", () => {
+  const hass = makeHass({ climate: true, states: { "climate.chambre": { state: "off", attributes: { temperature: 24 } } } });
+  hass.states[ENTITIES.evening_climate_temperature].state = "25";
+  assert.equal(buildView(hass, config, NOW).panes[2].hint, "S'allume à 25 °C à ton arrivée, en soirée");
+});
+
 test("clim la nuit sans action : Lumina la laisse tourner", () => {
   const hass = makeHass({ climate: true, room: { period: "night", climate_vacant_action: "none" } });
   assert.equal(buildView(hass, config, NOW).panes[2].hint, "Lumina la laisse tourner la nuit");
@@ -467,7 +473,8 @@ test("réglages : onglet clim, ventilateurs à allumer, contrôle jusqu'au matin
   assert.deepEqual(tabs.map((tab) => tab.id), ["lights", "fans", "climate", "night", "presence"]);
   const climate = tabs.find((tab) => tab.id === "climate");
   assert.deepEqual(climate.rows.map((r) => r.key), [
-    "auto_climate", "climate_vacant_day", "climate_vacant_night", "climate_vacant_delay", "fans_with_climate", "fan_mix_speed",
+    "auto_climate", "climate_vacant_day", "climate_vacant_night", "climate_vacant_delay",
+    "evening_climate_temperature", "fans_with_climate", "fan_mix_speed",
   ]);
   assert.equal(climate.rows[1].options.setback, "Modérer");
   const fans = tabs.find((tab) => tab.id === "fans");

@@ -60,7 +60,8 @@ export type LuminaKey =
   | "fan_off_delay" | "night_fan_off_delay" | "vacancy_confirmation" | "override_duration"
   | "climate_vacant_day" | "climate_vacant_night" | "climate_vacant_delay" | "fans_with_climate" | "fan_mix_speed"
   | "sleeping" | "bedtime_gesture" | "sleep_brightness" | "night_end_day_off" | "night_end_holidays"
-  | "evening_start" | "evening_brightness" | "evening_color_temp" | "sunset_advance" | "sunrise_delay";
+  | "evening_start" | "evening_brightness" | "evening_color_temp" | "sunset_advance" | "sunrise_delay"
+  | "evening_climate_temperature";
 
 export type RoomEntities = Partial<Record<LuminaKey, string>>;
 
@@ -452,7 +453,7 @@ export function buildView(
   const shown = (kind: PaneKind) => !config.hide_panes?.includes(kind);
   if (hasLights && !lightsPaused && shown("lights")) panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), mode, language, pending.lights));
   if (hasFans && !fansPaused && shown("fans")) panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), mode, language, pending.fans));
-  if (hasClimate && !climatePaused && shown("climate")) panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), mode, pending.climate));
+  if (hasClimate && !climatePaused && shown("climate")) panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), mode, language, pending.climate));
 
   return {
     status: "ok",
@@ -661,7 +662,8 @@ function fansPane(
 
 function climatePane(
   hass: Hass, room: RoomEntities, a: Record<string, any>, t: Translate, ids: string[],
-  auto: AutoState, manualHint: string, { night, presumed }: PaneMode, pending: number | undefined,
+  auto: AutoState, manualHint: string, { night, presumed }: PaneMode, language: string,
+  pending: number | undefined,
 ): Pane {
   const states = ids.map((id) => hass.states[id]).filter((s): s is HassEntity => !!s);
   const active = states.filter(isClimateOn);
@@ -693,10 +695,16 @@ function climatePane(
   let hint: string;
   const action: string | undefined = a.climate_vacant_action;
   const delay = num(hass, room.climate_vacant_delay);
+  // Lumina 0.16 : consigne de soirée, 0 = jamais allumée
+  const evening = num(hass, room.evening_climate_temperature);
   if (auto === "paused") hint = t("hint_paused");
   else if (auto === "manual") hint = manualHint;
   else if (a.climate_vacant_applied) hint = t("hint_climate_restore");
-  else if (!on) hint = t("hint_climate_never_on");
+  else if (!on) {
+    hint = evening
+      ? t("hint_climate_evening_on", { v: formatNumber(evening, language, 1) })
+      : t("hint_climate_never_on");
+  }
   // Lumina ne touche pas une clim en simple ventilation (depuis 0.9.0)
   else if (mode === "fan_only") hint = t("hint_climate_fan_only");
   // Pièce présumée occupée : aucune action en ton absence pendant le sommeil
@@ -814,6 +822,8 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
       ["climate_vacant_day", "select", "s_climate_vacant_day", "h_climate_vacant", CLIMATE_ACTIONS],
       ["climate_vacant_night", "select", "s_climate_vacant_night", "h_climate_vacant_night", CLIMATE_ACTIONS],
       ["climate_vacant_delay", "number", "s_climate_vacant_delay", "h_climate_vacant_delay"],
+      // Lumina 0.16
+      ["evening_climate_temperature", "number", "s_evening_climate_temperature", "h_evening_climate_temperature"],
       ["fans_with_climate", "select", "s_fans_with_climate", undefined, FANS_WITH_CLIMATE],
       ["fan_mix_speed", "number", "s_fan_mix_speed"],
     ],
