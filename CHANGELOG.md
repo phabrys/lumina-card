@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 — 2026-10-26
+
+- Pièce sans capteur de luminosité (Lumina 0.14) : en journée, la lumière indique « S'allume après le coucher du soleil » au lieu de « S'allume à ton arrivée ». Après une extinction au lever du soleil, la carte affiche « Soleil levé » et la note « Soleil levé, pas d'allumage », au lieu de « Lumière du jour suffisante ».
+
 ## 0.8.0 — 2026-10-26
 
 - Option `compact` : la consigne de la clim se règle depuis la pastille, avec − / + comme dans le panneau complet (« Froid  − 24,0 °C + »). Elle est envoyée une fois que tu arrêtes d'appuyer.

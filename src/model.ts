@@ -431,7 +431,7 @@ export function buildView(
   if (applied === "off" || applied === "eco" || applied === "setback") {
     notes.push(t(applied === "off" ? "note_climate_off" : applied === "eco" ? "note_climate_eco" : "note_climate_setback"));
   }
-  if (hasLights && a.daylight_locked) notes.push(t("note_daylight"));
+  if (hasLights && a.daylight_locked) notes.push(t(a.illuminance_sensor ? "note_daylight" : "note_sun_up"));
   if (hasLights && a.lights_held && !lightsPaused) {
     // Répit du réveil : jusqu'à une heure précise depuis Lumina 0.10.2
     const held = parseDate(a.wake_hold_until);
@@ -585,13 +585,16 @@ function lightsPane(
   else if (sleeping) {
     const nightLight = num(hass, room.sleep_brightness);
     hint = nightLight ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) }) : t("hint_no_sleep_light");
-  } else if (a.daylight_locked) hint = t("hint_daylight");
+  } else if (a.daylight_locked) hint = t(a.illuminance_sensor ? "hint_daylight" : "hint_sun_up");
   else if (night && num(hass, room.night_brightness) === 0) hint = t("hint_no_night");
   else {
     const threshold = num(hass, room.lux_threshold);
+    // Sans capteur de luminosité, Lumina 0.14 suit le soleil.
     hint = a.illuminance_sensor && threshold !== null
       ? t("hint_lights_below", { v: formatNumber(threshold, language) })
-      : t("hint_lights_auto");
+      : !a.illuminance_sensor && hass.states["sun.sun"]?.state === "above_horizon"
+        ? t("hint_lights_after_sunset")
+        : t("hint_lights_auto");
   }
 
   return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, detail, hint, auto, autoEntity: room.auto_lights };

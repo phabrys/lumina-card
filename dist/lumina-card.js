@@ -1,4 +1,4 @@
-/*! Lumina Card 0.8.0 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.8.1 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -84,6 +84,7 @@ const fr = {
     note_climate_eco: "Clim en eco en ton absence, rétablie à ton retour",
     note_climate_setback: "Consigne de la clim modérée en ton absence, rétablie à ton retour",
     note_daylight: "Lumière du jour suffisante, pas d'allumage",
+    note_sun_up: "Soleil levé, pas d'allumage",
     note_no_night_light: "Pas d'allumage automatique cette nuit",
     note_warning: "Un mouvement la garde allumée",
     note_presumed: "Présence présumée malgré le détecteur",
@@ -120,12 +121,14 @@ const fr = {
     d_s: "{n} s",
     hint_lights_below: "S'allume sous {v} lx",
     hint_lights_auto: "S'allume à ton arrivée",
+    hint_lights_after_sunset: "S'allume après le coucher du soleil",
     hint_no_night: "Pas d'allumage la nuit",
     hint_no_sleep_light: "Pas d'allumage pendant le sommeil",
     hint_sleep_night_light: "Veilleuse à {v} % pendant le sommeil",
     hint_lights_held: "Reste éteinte jusqu'à ton départ",
     hint_lights_held_until: "Reste éteinte jusqu'à {h}",
     hint_daylight: "Lumière du jour suffisante",
+    hint_sun_up: "Soleil levé",
     hint_fans_at: "Démarre à {v} °C",
     hint_fans_at_apparent: "Démarre à {v} °C ressentis",
     hint_fans_presence: "Démarre à ton arrivée",
@@ -314,6 +317,7 @@ const en = {
     note_climate_eco: "AC in eco while you're away, restored when you return",
     note_climate_setback: "AC setpoint eased while you're away, restored when you return",
     note_daylight: "Enough daylight, no turn-on",
+    note_sun_up: "Sun up, no turn-on",
     note_no_night_light: "No automatic light tonight",
     note_warning: "Any movement keeps it on",
     note_presumed: "Presence presumed despite the sensor",
@@ -348,12 +352,14 @@ const en = {
     d_s: "{n} s",
     hint_lights_below: "Turns on below {v} lx",
     hint_lights_auto: "Turns on when you arrive",
+    hint_lights_after_sunset: "Turns on after sunset",
     hint_no_night: "No turn-on at night",
     hint_no_sleep_light: "No turn-on while asleep",
     hint_sleep_night_light: "Night light at {v} % while asleep",
     hint_lights_held: "Stays off until you leave",
     hint_lights_held_until: "Stays off until {h}",
     hint_daylight: "Enough daylight",
+    hint_sun_up: "Sun up",
     hint_fans_at: "Starts at {v} °C",
     hint_fans_at_apparent: "Starts at {v} °C feels-like",
     hint_fans_presence: "Starts when you arrive",
@@ -799,7 +805,7 @@ function buildView(hass, config, now, pending = {}) {
         notes.push(t(applied === "off" ? "note_climate_off" : applied === "eco" ? "note_climate_eco" : "note_climate_setback"));
     }
     if (hasLights && a.daylight_locked)
-        notes.push(t("note_daylight"));
+        notes.push(t(a.illuminance_sensor ? "note_daylight" : "note_sun_up"));
     if (hasLights && a.lights_held && !lightsPaused) {
         // Répit du réveil : jusqu'à une heure précise depuis Lumina 0.10.2
         const held = parseDate(a.wake_hold_until);
@@ -942,14 +948,17 @@ function lightsPane(hass, room, a, t, ids, auto, manualHint, { night, sleeping }
         hint = nightLight ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) }) : t("hint_no_sleep_light");
     }
     else if (a.daylight_locked)
-        hint = t("hint_daylight");
+        hint = t(a.illuminance_sensor ? "hint_daylight" : "hint_sun_up");
     else if (night && num(hass, room.night_brightness) === 0)
         hint = t("hint_no_night");
     else {
         const threshold = num(hass, room.lux_threshold);
+        // Sans capteur de luminosité, Lumina 0.14 suit le soleil.
         hint = a.illuminance_sensor && threshold !== null
             ? t("hint_lights_below", { v: formatNumber(threshold, language) })
-            : t("hint_lights_auto");
+            : !a.illuminance_sensor && hass.states["sun.sun"]?.state === "above_horizon"
+                ? t("hint_lights_after_sunset")
+                : t("hint_lights_auto");
     }
     return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, detail, hint, auto, autoEntity: room.auto_lights };
 }
@@ -2661,5 +2670,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.8.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.8.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

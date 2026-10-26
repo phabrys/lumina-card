@@ -131,6 +131,17 @@ test("toutes les notes sont transmises, la carte n'en montre que deux d'emblée"
   assert.equal(notes[2], "Lumière du jour suffisante, pas d'allumage");
 });
 
+test("sans capteur de luminosité, la lumière suit le soleil", () => {
+  const off = { "light.chambre": { state: "off", attributes: {} } };
+  const hint = (sun, room = {}) =>
+    buildView(makeHass({ room: { illuminance_sensor: null, ...room }, states: { ...off, "sun.sun": { state: sun, attributes: {} } } }), config, NOW).panes[0].hint;
+  assert.equal(hint("above_horizon"), "S'allume après le coucher du soleil");
+  assert.equal(hint("below_horizon"), "S'allume à ton arrivée");
+  assert.equal(hint("above_horizon", { daylight_locked: true }), "Soleil levé");
+  const locked = makeHass({ room: { illuminance_sensor: null, daylight_locked: true } });
+  assert.ok(buildView(locked, config, NOW).notes.includes("Soleil levé, pas d'allumage"));
+});
+
 test("teinte de la lumière et capteurs de l'ambiance", () => {
   const hass = makeHass({
     states: {
