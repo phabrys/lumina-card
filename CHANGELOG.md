@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.0 — 2026-10-26
+
+- Réglages, onglet Lumières : **Allumage avant le coucher du soleil** et **Extinction après le lever du soleil**, pour une pièce sans capteur de luminosité (Lumina 0.15).
+- En journée, une telle pièce indique « S'allume 30 min avant le coucher du soleil », selon la marge réglée.
+
 ## 0.8.1 — 2026-10-26
 
 - Pièce sans capteur de luminosité (Lumina 0.14) : en journée, la lumière indique « S'allume après le coucher du soleil » au lieu de « S'allume à ton arrivée ». Après une extinction au lever du soleil, la carte affiche « Soleil levé » et la note « Soleil levé, pas d'allumage », au lieu de « Lumière du jour suffisante ».

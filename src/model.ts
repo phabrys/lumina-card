@@ -60,7 +60,7 @@ export type LuminaKey =
   | "fan_off_delay" | "night_fan_off_delay" | "vacancy_confirmation" | "override_duration"
   | "climate_vacant_day" | "climate_vacant_night" | "climate_vacant_delay" | "fans_with_climate" | "fan_mix_speed"
   | "sleeping" | "bedtime_gesture" | "sleep_brightness" | "night_end_day_off" | "night_end_holidays"
-  | "evening_start" | "evening_brightness" | "evening_color_temp";
+  | "evening_start" | "evening_brightness" | "evening_color_temp" | "sunset_advance" | "sunrise_delay";
 
 export type RoomEntities = Partial<Record<LuminaKey, string>>;
 
@@ -593,11 +593,18 @@ function lightsPane(
     hint = a.illuminance_sensor && threshold !== null
       ? t("hint_lights_below", { v: formatNumber(threshold, language) })
       : !a.illuminance_sensor && hass.states["sun.sun"]?.state === "above_horizon"
-        ? t("hint_lights_after_sunset")
+        ? sunsetHint(num(hass, room.sunset_advance), t)
         : t("hint_lights_auto");
   }
 
   return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, detail, hint, auto, autoEntity: room.auto_lights };
+}
+
+/** Sans capteur de luminosité, en journée : allumage avant le coucher du soleil (Lumina 0.15). */
+function sunsetHint(advance: number | null, t: Translate): string {
+  return advance
+    ? t("hint_lights_before_sunset", { d: formatDelay(advance * 60, t) })
+    : t("hint_lights_after_sunset");
 }
 
 function fansPane(
@@ -783,6 +790,9 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
       ["night_light_off_delay", "number", "s_night_light_off_delay"],
       ["light_warning_duration", "number", "s_light_warning_duration", "h_light_warning_duration"],
       ["daylight_off_lux", "number", "s_daylight_off_lux", "h_daylight_off_lux"],
+      // Lumina 0.15, pièce sans capteur de luminosité
+      ["sunset_advance", "number", "s_sunset_advance", "h_sun_margin"],
+      ["sunrise_delay", "number", "s_sunrise_delay", "h_sun_margin"],
       ["lights_mode", "select", "s_lights_mode", undefined, ALL_ANY],
     ],
   },

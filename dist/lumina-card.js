@@ -1,4 +1,4 @@
-/*! Lumina Card 0.8.1 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.9.0 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -122,6 +122,7 @@ const fr = {
     hint_lights_below: "S'allume sous {v} lx",
     hint_lights_auto: "S'allume à ton arrivée",
     hint_lights_after_sunset: "S'allume après le coucher du soleil",
+    hint_lights_before_sunset: "S'allume {d} avant le coucher du soleil",
     hint_no_night: "Pas d'allumage la nuit",
     hint_no_sleep_light: "Pas d'allumage pendant le sommeil",
     hint_sleep_night_light: "Veilleuse à {v} % pendant le sommeil",
@@ -205,6 +206,9 @@ const fr = {
     h_light_warning_duration: "La lumière baisse d'abord. 0 : extinction directe",
     s_daylight_off_lux: "Éteindre au-dessus de",
     h_daylight_off_lux: "Lumière du jour, à régler au-dessus de la mesure lampe allumée. 0 : désactivé",
+    s_sunset_advance: "Allumage avant le coucher du soleil",
+    s_sunrise_delay: "Extinction après le lever du soleil",
+    h_sun_margin: "Sans capteur de luminosité : l'intérieur est plus sombre que dehors",
     s_lights_mode: "Si une lumière est déjà allumée",
     s_fans_mode: "Si un ventilateur tourne déjà",
     o_all: "Allumer les autres",
@@ -353,6 +357,7 @@ const en = {
     hint_lights_below: "Turns on below {v} lx",
     hint_lights_auto: "Turns on when you arrive",
     hint_lights_after_sunset: "Turns on after sunset",
+    hint_lights_before_sunset: "Turns on {d} before sunset",
     hint_no_night: "No turn-on at night",
     hint_no_sleep_light: "No turn-on while asleep",
     hint_sleep_night_light: "Night light at {v} % while asleep",
@@ -432,6 +437,9 @@ const en = {
     h_light_warning_duration: "Dims first. 0: turn off directly",
     s_daylight_off_lux: "Turn off above",
     h_daylight_off_lux: "Daylight; set above the reading with the lamp on. 0: off",
+    s_sunset_advance: "Turn on before sunset",
+    s_sunrise_delay: "Turn off after sunrise",
+    h_sun_margin: "Without a light sensor: indoors is darker than outside",
     s_lights_mode: "If a light is already on",
     s_fans_mode: "If a fan is already running",
     o_all: "Turn on the others",
@@ -957,10 +965,16 @@ function lightsPane(hass, room, a, t, ids, auto, manualHint, { night, sleeping }
         hint = a.illuminance_sensor && threshold !== null
             ? t("hint_lights_below", { v: formatNumber(threshold, language) })
             : !a.illuminance_sensor && hass.states["sun.sun"]?.state === "above_horizon"
-                ? t("hint_lights_after_sunset")
+                ? sunsetHint(num(hass, room.sunset_advance), t)
                 : t("hint_lights_auto");
     }
     return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, detail, hint, auto, autoEntity: room.auto_lights };
+}
+/** Sans capteur de luminosité, en journée : allumage avant le coucher du soleil (Lumina 0.15). */
+function sunsetHint(advance, t) {
+    return advance
+        ? t("hint_lights_before_sunset", { d: formatDelay(advance * 60, t) })
+        : t("hint_lights_after_sunset");
 }
 function fansPane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, language, pending) {
     const states = ids.map((id) => hass.states[id]);
@@ -1121,6 +1135,9 @@ const TABS = [
             ["night_light_off_delay", "number", "s_night_light_off_delay"],
             ["light_warning_duration", "number", "s_light_warning_duration", "h_light_warning_duration"],
             ["daylight_off_lux", "number", "s_daylight_off_lux", "h_daylight_off_lux"],
+            // Lumina 0.15, pièce sans capteur de luminosité
+            ["sunset_advance", "number", "s_sunset_advance", "h_sun_margin"],
+            ["sunrise_delay", "number", "s_sunrise_delay", "h_sun_margin"],
             ["lights_mode", "select", "s_lights_mode", undefined, ALL_ANY],
         ],
     },
@@ -2670,5 +2687,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.8.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.9.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

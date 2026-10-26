@@ -25,6 +25,9 @@ const KEYS = {
   fan_min_speed: "number.lumina_chambre_vitesse_min",
   vacancy_confirmation: "number.lumina_chambre_confirmation",
   override_duration: "number.lumina_chambre_duree_manuel",
+  // Lumina 0.15, sans capteur de luminosité : absents par défaut
+  sunset_advance: "number.lumina_chambre_avant_coucher",
+  sunrise_delay: "number.lumina_chambre_apres_lever",
   auto_climate: "switch.lumina_chambre_auto_clim",
   climate_vacant_day: "select.lumina_chambre_clim_vide_jour",
   climate_vacant_night: "select.lumina_chambre_clim_vide_nuit",

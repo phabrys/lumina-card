@@ -136,6 +136,16 @@ test("sans capteur de luminosité, la lumière suit le soleil", () => {
   const hint = (sun, room = {}) =>
     buildView(makeHass({ room: { illuminance_sensor: null, ...room }, states: { ...off, "sun.sun": { state: sun, attributes: {} } } }), config, NOW).panes[0].hint;
   assert.equal(hint("above_horizon"), "S'allume après le coucher du soleil");
+  const advance = { "number.lumina_chambre_avant_coucher": { state: "30", attributes: { unit_of_measurement: "min" } } };
+  const withMargin = makeHass({
+    room: { illuminance_sensor: null },
+    states: { ...off, ...advance, "sun.sun": { state: "above_horizon", attributes: {} } },
+  });
+  const view = buildView(withMargin, config, NOW);
+  assert.equal(view.panes[0].hint, "S'allume 30 min avant le coucher du soleil");
+  const lights = settingTabs(view.entities, translator("fr")).find((tab) => tab.id === "lights");
+  const margin = lights.rows.find((r) => r.key === "sunset_advance");
+  assert.equal(margin.label, "Allumage avant le coucher du soleil");
   assert.equal(hint("below_horizon"), "S'allume à ton arrivée");
   assert.equal(hint("above_horizon", { daylight_locked: true }), "Soleil levé");
   const locked = makeHass({ room: { illuminance_sensor: null, daylight_locked: true } });
