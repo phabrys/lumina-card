@@ -85,16 +85,21 @@
     date.setHours(h, 0, 0, 0);
     return date.toISOString();
   };
+  // Lampe allumée en blanc : la teinte s'affiche après le titre du panneau
+  const lamp = (brightness, kelvin = 3000) => ({
+    state: "on",
+    attributes: { brightness, supported_color_modes: ["color_temp"], color_mode: "color_temp", color_temp_kelvin: kelvin },
+  });
   const SCENES = {
-    occupied: { label: "Pièce occupée, jour", hass: makeHass() },
+    occupied: { label: "Pièce occupée, jour", hass: makeHass({ states: { "light.chambre": lamp(179) } }) },
     manual: {
       label: "Contrôle manuel",
       hass: makeHass({ room: { lights_override_until: at(30 * 60) },
-        states: { "light.chambre": { state: "on", attributes: { brightness: 255, supported_color_modes: ["color_temp"] } } } }),
+        states: { "light.chambre": lamp(255) } }),
     },
     vacating: (() => {
       const hass = makeHass({ room: { occupied: false, lights_warning: true, lights_off_at: at(11), fans_off_at: at(160) },
-        states: { "light.chambre": { state: "on", attributes: { brightness: 51, supported_color_modes: ["color_temp"] } } } });
+        states: { "light.chambre": lamp(51) } });
       hass.states[ENTITIES.room_state].state = "vacant";
       return { label: "Avertissement avant extinction", hass };
     })(),
@@ -106,7 +111,7 @@
           [ENTITIES.forced_night]: { state: "on", attributes: { until: tomorrowAt(7) } },
           "binary_sensor.fp2_chambre": { state: "off", attributes: {} },
           "media_player.tv_chambre": { state: "playing", attributes: { friendly_name: "TV Chambre" } },
-          "light.chambre": { state: "on", attributes: { brightness: 77, supported_color_modes: ["color_temp"] } },
+          "light.chambre": lamp(77, 2200),
           "fan.chambre": { state: "on", attributes: { percentage: 33, percentage_step: 33 } },
         },
       }),
@@ -127,7 +132,7 @@
     climate: {
       label: "Clim en marche, ventilateur en brassage",
       hass: makeHass({ climate: true, room: { fans_with_climate: "mix" },
-        states: { "fan.chambre": { state: "on", attributes: { percentage: 33, percentage_step: 33 } } } }),
+        states: { "light.chambre": lamp(179), "fan.chambre": { state: "on", attributes: { percentage: 33, percentage_step: 33 } } } }),
     },
     away: (() => {
       const hass = makeHass({ climate: true,

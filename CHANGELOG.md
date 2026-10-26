@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 — 2026-10-26
+
+- Réglages : la valeur entre les boutons − et + n'a plus le fond gris arrondi des boutons, apparu en 0.6.1 quand elle est devenue un bouton pour le clavier.
+- Démo et captures du README : les lampes allumées ont une teinte (« Lumière · 3 000 K »).
+
 ## 0.7.0 — 2026-10-25
 
 - Option `compact` : chaque panneau devient une pastille (icône, valeur, consigne de la clim), avec une main pour rendre la main en contrôle manuel. Pour un tableau de bord qui regroupe toutes les pièces.

@@ -431,7 +431,8 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   gap: 2px;
   flex: none;
 }
-.stepper button {
+/* Boutons − / + ; la valeur entre les deux est aussi un bouton, sans fond */
+.stepper button:not(.stepper-value) {
   display: grid;
   place-items: center;
   width: 30px;
@@ -444,6 +445,7 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
 .stepper button svg { width: 16px; height: 16px; }
 .stepper-value {
   min-width: 64px;
+  border-radius: 6px;
   text-align: center;
   display: flex;
   flex-direction: column;

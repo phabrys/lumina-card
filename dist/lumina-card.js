@@ -1,4 +1,4 @@
-/*! Lumina Card 0.7.0 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.7.1 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -1637,7 +1637,8 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
   gap: 2px;
   flex: none;
 }
-.stepper button {
+/* Boutons − / + ; la valeur entre les deux est aussi un bouton, sans fond */
+.stepper button:not(.stepper-value) {
   display: grid;
   place-items: center;
   width: 30px;
@@ -1650,6 +1651,7 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
 .stepper button svg { width: 16px; height: 16px; }
 .stepper-value {
   min-width: 64px;
+  border-radius: 6px;
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -2655,5 +2657,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.7.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.7.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }
