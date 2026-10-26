@@ -58,6 +58,15 @@ function formatValue(value: number, step: number, language: string): string {
   return value.toLocaleString(language, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
 
+/**
+ * Tout ce qui est affiché sauf les textes de la phrase et des notes, où vivent
+ * les comptes à rebours : si cette clé ne change pas d'une seconde à l'autre,
+ * il suffit de mettre ces textes à jour.
+ */
+export function tickKey(view: RoomView): string {
+  return JSON.stringify({ ...view, now: { ...view.now, text: "" }, notes: view.notes.length });
+}
+
 export class LuminaCard extends BaseElement {
   private _config?: CardConfig;
   private _hass?: Hass;
@@ -70,6 +79,8 @@ export class LuminaCard extends BaseElement {
   private _numbers = new Map<string, number>();
   private _numberTimers = new Map<string, number>();
   private _tick?: number;
+  /** Ce qui est affiché, hors textes des comptes à rebours (voir tickKey). */
+  private _drawnKey?: string;
   private _dragging?: { kind: "lights" | "fans"; slider: HTMLElement };
   private _setpointTimer?: number;
   private _root: ShadowRoot;
@@ -174,6 +185,7 @@ export class LuminaCard extends BaseElement {
     if (focused?.matches?.("input")) return;
 
     this._root.innerHTML = `<style>${STYLES}</style><ha-card>${body}</ha-card>`;
+    this._drawnKey = this._settingsOpen ? undefined : tickKey(view);
     if (view.ticking) this._startTick();
     else this._stopTick();
   }
@@ -193,8 +205,9 @@ export class LuminaCard extends BaseElement {
     const action = now.action
       ? `<button class="now-action" data-action="${now.action.kind}">${esc(now.action.label)}</button>`
       : "";
+    // Un compte à rebours ne doit pas être lu à voix haute chaque seconde.
     const nowLine = `
-      <div class="now" role="status" aria-live="polite">
+      <div class="now" role="status" aria-live="${view.ticking ? "off" : "polite"}">
         <span class="now-icon">${svg(now.icon)}</span>
         <span class="now-text">${esc(now.text)}</span>
         ${action}
@@ -391,8 +404,26 @@ export class LuminaCard extends BaseElement {
     this._tick = window.setInterval(() => {
       if (!this._hass || !this._config) return;
       this._view = buildView(this._hass, this._config, new Date(), this._pending);
-      if (!this._dragging) this._draw();
+      // Les réglages n'affichent aucun compte à rebours
+      if (this._dragging || this._settingsOpen) return;
+      if (!this._patch(this._view)) this._draw();
     }, 1000);
+  }
+
+  /**
+   * Met à jour les comptes à rebours sans redessiner la carte : l'hélice ne
+   * repart pas de zéro et le focus reste en place. Faux s'il faut redessiner.
+   */
+  private _patch(view: RoomView): boolean {
+    if (this._drawnKey === undefined || tickKey(view) !== this._drawnKey) return false;
+    const text = this._root.querySelector(".now-text");
+    const notes = this._root.querySelectorAll(".notes li");
+    if (!text || notes.length !== view.notes.length) return false;
+    if (text.textContent !== view.now.text) text.textContent = view.now.text;
+    view.notes.forEach((note, index) => {
+      if (notes[index].textContent !== note) notes[index].textContent = note;
+    });
+    return true;
   }
 
   private _stopTick(): void {
@@ -404,20 +435,40 @@ export class LuminaCard extends BaseElement {
 
   // --- Gestes -----------------------------------------------------------------
 
-  private async _call(domain: string, service: string, data: Record<string, unknown>): Promise<void> {
+  /** Appelle un service ; vrai s'il a réussi, sinon l'erreur est affichée. */
+  private async _call(domain: string, service: string, data: Record<string, unknown>): Promise<boolean> {
     try {
       await this._hass!.callService(domain, service, data);
+      return true;
     } catch (err) {
       const t = translator(languageOf(this._hass!));
       const message = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? err);
-      this.dispatchEvent(
-        new CustomEvent("hass-notification", {
-          detail: { message: t("error", { e: message }) },
-          bubbles: true,
-          composed: true,
-        }),
-      );
+      this._notify(t("error", { e: message }));
+      return false;
     }
+  }
+
+  /** Message en bas de l'écran de Home Assistant, avec un bouton facultatif. */
+  private _notify(message: string, action?: { text: string; action: () => void }): void {
+    this.dispatchEvent(
+      new CustomEvent("hass-notification", {
+        detail: action ? { message, action, duration: 8000 } : { message },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  /**
+   * Met l'automatisme d'un groupe en pause. Son panneau disparaît aussitôt :
+   * un message permet d'annuler une pastille touchée par erreur.
+   */
+  private async _pause(pane: Pane): Promise<void> {
+    const entityId = pane.autoEntity!;
+    if (!(await this._call("switch", "turn_off", { entity_id: entityId }))) return;
+    const t = translator(languageOf(this._hass!));
+    const message = t(pane.kind === "lights" ? "note_lights_paused" : pane.kind === "fans" ? "note_fans_paused" : "note_climate_paused");
+    this._notify(message, { text: t("undo"), action: () => this._call("switch", "turn_on", { entity_id: entityId }) });
   }
 
   private _moreInfo(entityId: string): void {
@@ -479,7 +530,8 @@ export class LuminaCard extends BaseElement {
         const pane = this._pane(kind);
         if (!pane?.autoEntity) break;
         if (pane.auto === "manual" && room.resume) this._call("button", "press", { entity_id: room.resume });
-        else this._call("switch", pane.auto === "paused" ? "turn_on" : "turn_off", { entity_id: pane.autoEntity });
+        else if (pane.auto === "paused") this._call("switch", "turn_on", { entity_id: pane.autoEntity });
+        else this._pause(pane);
         break;
       }
       case "toggle": {

@@ -137,6 +137,7 @@ const fr = {
   sleep: "Sommeil",
   back: "Retour",
   error: "Action impossible : {e}",
+  undo: "Annuler",
   // Onglets de réglages
   tab_lights: "Lumière",
   tab_fans: "Ventilateur",
@@ -357,6 +358,7 @@ const en: Strings = {
   sleep: "Sleep",
   back: "Back",
   error: "Action failed: {e}",
+  undo: "Undo",
   tab_lights: "Light",
   tab_fans: "Fan",
   tab_climate: "AC",

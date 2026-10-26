@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildView, formatCountdown, humanDuration, settingTabs, translator } from "../build/model.js";
-import { smartStep, snap } from "../build/card.js";
+import { buildView, formatCountdown, humanDuration, resolveRoom, settingTabs, translator } from "../build/model.js";
+import { smartStep, snap, tickKey } from "../build/card.js";
 import { DEVICE, ENTITIES, makeHass } from "./fixtures.mjs";
 
 const config = { type: "custom:lumina-card", device: DEVICE };
@@ -68,6 +68,31 @@ test("pièce vide : extinctions programmées, la plus proche d'abord", () => {
   const view = buildView(hass, config, NOW);
   assert.equal(view.now.text, "La lumière s'éteint dans 1:35");
   assert.deepEqual(view.notes, ["Le ventilateur s'arrête dans 4:40"]);
+});
+
+test("compte à rebours : d'une seconde à l'autre, seuls les textes changent", () => {
+  const hass = makeHass({ room: { occupied: false, lights_off_at: inSeconds(95), fans_off_at: inSeconds(280) } });
+  hass.states[ENTITIES.room_state].state = "vacant";
+  const before = buildView(hass, config, NOW);
+  const after = buildView(hass, config, new Date(NOW.getTime() + 1000));
+  assert.equal(after.now.text, "La lumière s'éteint dans 1:34");
+  assert.deepEqual(after.notes, ["Le ventilateur s'arrête dans 4:39"]);
+  assert.equal(tickKey(after), tickKey(before));
+  // L'avertissement change le ton et l'icône de la phrase : il faut redessiner
+  hass.states[ENTITIES.room_state].attributes.lights_warning = true;
+  assert.notEqual(tickKey(buildView(hass, config, NOW)), tickKey(before));
+});
+
+test("les entités de la pièce sont relues quand le registre change", () => {
+  const hass = makeHass();
+  const room = resolveRoom(hass, DEVICE);
+  assert.equal(resolveRoom(hass, DEVICE), room);
+  const { [ENTITIES.forced_night]: _, ...entities } = hass.entities;
+  hass.entities = entities;
+  const fresh = resolveRoom(hass, DEVICE);
+  assert.notEqual(fresh, room);
+  assert.equal(fresh.forced_night, undefined);
+  assert.equal(room.forced_night, ENTITIES.forced_night);
 });
 
 test("automatisme en pause partout : bouton Réactiver", () => {

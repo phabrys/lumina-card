@@ -1,4 +1,4 @@
-/*! Lumina Card 0.5.0 — https://github.com/phabrys/lumina-card — MIT
+/*! Lumina Card 0.5.1 — https://github.com/phabrys/lumina-card — MIT
  * Icônes : Material Design Icons (Apache 2.0). Fichier généré, ne pas modifier :
  * les sources sont dans src/. */
 // --- icons.ts ---
@@ -173,6 +173,7 @@ const fr = {
     sleep: "Sommeil",
     back: "Retour",
     error: "Action impossible : {e}",
+    undo: "Annuler",
     // Onglets de réglages
     tab_lights: "Lumière",
     tab_fans: "Ventilateur",
@@ -390,6 +391,7 @@ const en = {
     sleep: "Sleep",
     back: "Back",
     error: "Action failed: {e}",
+    undo: "Undo",
     tab_lights: "Light",
     tab_fans: "Fan",
     tab_climate: "AC",
@@ -508,16 +510,27 @@ function deviceOf(hass, config) {
         return hass.entities?.[config.entity]?.device_id ?? undefined;
     return undefined;
 }
+/** Pièces déjà résolues, par registre : Home Assistant remplace l'objet
+ * `hass.entities` à chaque changement du registre, pas à chaque changement d'état. */
+const roomCache = new WeakMap();
 /** Entités Lumina d'un appareil, indexées par clé de traduction. */
 function resolveRoom(hass, deviceId) {
-    const room = {};
     if (!deviceId)
+        return {};
+    const registry = hass.entities ?? {};
+    let rooms = roomCache.get(registry);
+    if (!rooms)
+        roomCache.set(registry, (rooms = new Map()));
+    let room = rooms.get(deviceId);
+    if (room)
         return room;
-    for (const entry of Object.values(hass.entities ?? {})) {
+    room = {};
+    for (const entry of Object.values(registry)) {
         if (entry.platform === "lumina" && entry.device_id === deviceId && entry.translation_key) {
             room[entry.translation_key] = entry.entity_id;
         }
     }
+    rooms.set(deviceId, room);
     return room;
 }
 function roomName(hass, config, room) {
@@ -1733,6 +1746,14 @@ function formatValue(value, step, language) {
     const digits = step < 1 ? Math.min(2, String(step).split(".")[1]?.length ?? 1) : 0;
     return value.toLocaleString(language, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
+/**
+ * Tout ce qui est affiché sauf les textes de la phrase et des notes, où vivent
+ * les comptes à rebours : si cette clé ne change pas d'une seconde à l'autre,
+ * il suffit de mettre ces textes à jour.
+ */
+function tickKey(view) {
+    return JSON.stringify({ ...view, now: { ...view.now, text: "" }, notes: view.notes.length });
+}
 class LuminaCard extends BaseElement {
     _config;
     _hass;
@@ -1745,6 +1766,8 @@ class LuminaCard extends BaseElement {
     _numbers = new Map();
     _numberTimers = new Map();
     _tick;
+    /** Ce qui est affiché, hors textes des comptes à rebours (voir tickKey). */
+    _drawnKey;
     _dragging;
     _setpointTimer;
     _root;
@@ -1835,6 +1858,7 @@ class LuminaCard extends BaseElement {
         if (focused?.matches?.("input"))
             return;
         this._root.innerHTML = `<style>${STYLES}</style><ha-card>${body}</ha-card>`;
+        this._drawnKey = this._settingsOpen ? undefined : tickKey(view);
         if (view.ticking)
             this._startTick();
         else
@@ -1854,8 +1878,9 @@ class LuminaCard extends BaseElement {
         const action = now.action
             ? `<button class="now-action" data-action="${now.action.kind}">${esc(now.action.label)}</button>`
             : "";
+        // Un compte à rebours ne doit pas être lu à voix haute chaque seconde.
         const nowLine = `
-      <div class="now" role="status" aria-live="polite">
+      <div class="now" role="status" aria-live="${view.ticking ? "off" : "polite"}">
         <span class="now-icon">${svg(now.icon)}</span>
         <span class="now-text">${esc(now.text)}</span>
         ${action}
@@ -2027,9 +2052,31 @@ class LuminaCard extends BaseElement {
             if (!this._hass || !this._config)
                 return;
             this._view = buildView(this._hass, this._config, new Date(), this._pending);
-            if (!this._dragging)
+            // Les réglages n'affichent aucun compte à rebours
+            if (this._dragging || this._settingsOpen)
+                return;
+            if (!this._patch(this._view))
                 this._draw();
         }, 1000);
+    }
+    /**
+     * Met à jour les comptes à rebours sans redessiner la carte : l'hélice ne
+     * repart pas de zéro et le focus reste en place. Faux s'il faut redessiner.
+     */
+    _patch(view) {
+        if (this._drawnKey === undefined || tickKey(view) !== this._drawnKey)
+            return false;
+        const text = this._root.querySelector(".now-text");
+        const notes = this._root.querySelectorAll(".notes li");
+        if (!text || notes.length !== view.notes.length)
+            return false;
+        if (text.textContent !== view.now.text)
+            text.textContent = view.now.text;
+        view.notes.forEach((note, index) => {
+            if (notes[index].textContent !== note)
+                notes[index].textContent = note;
+        });
+        return true;
     }
     _stopTick() {
         if (this._tick !== undefined) {
@@ -2038,19 +2085,38 @@ class LuminaCard extends BaseElement {
         }
     }
     // --- Gestes -----------------------------------------------------------------
+    /** Appelle un service ; vrai s'il a réussi, sinon l'erreur est affichée. */
     async _call(domain, service, data) {
         try {
             await this._hass.callService(domain, service, data);
+            return true;
         }
         catch (err) {
             const t = translator(languageOf(this._hass));
             const message = err instanceof Error ? err.message : String(err?.message ?? err);
-            this.dispatchEvent(new CustomEvent("hass-notification", {
-                detail: { message: t("error", { e: message }) },
-                bubbles: true,
-                composed: true,
-            }));
+            this._notify(t("error", { e: message }));
+            return false;
         }
+    }
+    /** Message en bas de l'écran de Home Assistant, avec un bouton facultatif. */
+    _notify(message, action) {
+        this.dispatchEvent(new CustomEvent("hass-notification", {
+            detail: action ? { message, action, duration: 8000 } : { message },
+            bubbles: true,
+            composed: true,
+        }));
+    }
+    /**
+     * Met l'automatisme d'un groupe en pause. Son panneau disparaît aussitôt :
+     * un message permet d'annuler une pastille touchée par erreur.
+     */
+    async _pause(pane) {
+        const entityId = pane.autoEntity;
+        if (!(await this._call("switch", "turn_off", { entity_id: entityId })))
+            return;
+        const t = translator(languageOf(this._hass));
+        const message = t(pane.kind === "lights" ? "note_lights_paused" : pane.kind === "fans" ? "note_fans_paused" : "note_climate_paused");
+        this._notify(message, { text: t("undo"), action: () => this._call("switch", "turn_on", { entity_id: entityId }) });
     }
     _moreInfo(entityId) {
         this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
@@ -2110,8 +2176,10 @@ class LuminaCard extends BaseElement {
                     break;
                 if (pane.auto === "manual" && room.resume)
                     this._call("button", "press", { entity_id: room.resume });
+                else if (pane.auto === "paused")
+                    this._call("switch", "turn_on", { entity_id: pane.autoEntity });
                 else
-                    this._call("switch", pane.auto === "paused" ? "turn_on" : "turn_off", { entity_id: pane.autoEntity });
+                    this._pause(pane);
                 break;
             }
             case "toggle": {
@@ -2404,5 +2472,5 @@ if (typeof customElements !== "undefined") {
             documentationURL: "https://github.com/phabrys/lumina-card",
         });
     }
-    console.info(`%c LUMINA-CARD %c ${"0.5.0"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
+    console.info(`%c LUMINA-CARD %c ${"0.5.1"} `, "color:#fff;background:#f2a93b;font-weight:700;border-radius:3px 0 0 3px", "color:#f2a93b;background:#222;border-radius:0 3px 3px 0");
 }

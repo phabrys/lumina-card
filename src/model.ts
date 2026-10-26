@@ -74,15 +74,25 @@ export function deviceOf(hass: Hass, config: CardConfig): string | undefined {
   return undefined;
 }
 
+/** Pièces déjà résolues, par registre : Home Assistant remplace l'objet
+ * `hass.entities` à chaque changement du registre, pas à chaque changement d'état. */
+const roomCache = new WeakMap<object, Map<string, RoomEntities>>();
+
 /** Entités Lumina d'un appareil, indexées par clé de traduction. */
 export function resolveRoom(hass: Hass, deviceId: string | undefined): RoomEntities {
-  const room: RoomEntities = {};
-  if (!deviceId) return room;
-  for (const entry of Object.values(hass.entities ?? {})) {
+  if (!deviceId) return {};
+  const registry = hass.entities ?? {};
+  let rooms = roomCache.get(registry);
+  if (!rooms) roomCache.set(registry, (rooms = new Map()));
+  let room = rooms.get(deviceId);
+  if (room) return room;
+  room = {};
+  for (const entry of Object.values(registry)) {
     if (entry.platform === "lumina" && entry.device_id === deviceId && entry.translation_key) {
       room[entry.translation_key as LuminaKey] = entry.entity_id;
     }
   }
+  rooms.set(deviceId, room);
   return room;
 }
 

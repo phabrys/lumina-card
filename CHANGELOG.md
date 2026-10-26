@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — 2026-10-25
+
+- Comptes à rebours : la carte ne se redessine plus entière chaque seconde, seuls les textes changent. L'hélice du ventilateur ne saccade plus et le focus du clavier reste en place pendant un avertissement ou une échéance en pièce vide. Un lecteur d'écran ne lit plus le compte à rebours à chaque seconde.
+- Pastille **Auto** touchée par erreur : un message « Automatisme des lumières en pause » s'affiche avec un bouton **Annuler**, qui réactive l'automatisme et fait revenir le panneau.
+- Plus léger sur les grosses installations : les entités de la pièce ne sont plus recherchées dans tout le registre à chaque changement d'état.
+
 ## 0.5.0 — 2026-10-25
 
 - Soirée de Lumina 0.13 : la pastille affiche **Soirée** entre le début de la soirée et la nuit. Réglages, onglet Lumière : **Luminosité en soirée** sous la luminosité du jour, **Teinte en soirée** sous la teinte du jour ; onglet Nuit : **Début de la soirée** avant le début de la nuit. Ces réglages n'apparaissent qu'avec Lumina 0.13.
