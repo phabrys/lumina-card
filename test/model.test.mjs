@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildView, formatCountdown, formatDelay, formatDuration, resolveRoom, settingTabs, translator } from "../build/model.js";
+import {
+  buildView,
+  formatCountdown,
+  formatDelay,
+  formatDuration,
+  resolveRoom,
+  settingTabs,
+  translator,
+} from "../build/model.js";
 import { durationStep, smartStep, snap, tickKey } from "../build/card.js";
 import { DEVICE, ENTITIES, makeHass } from "./fixtures.mjs";
 
@@ -14,7 +22,10 @@ test("pièce occupée : phrase, panneaux et ambiance", () => {
   assert.equal(view.status, "ok");
   assert.equal(view.name, "Chambre Parents");
   assert.equal(view.now.text, "Pièce occupée");
-  assert.deepEqual(view.panes.map((p) => p.kind), ["lights", "fans"]);
+  assert.deepEqual(
+    view.panes.map((p) => p.kind),
+    ["lights", "fans"],
+  );
   const [lights, fans] = view.panes;
   assert.equal(lights.level, 70);
   assert.equal(lights.value, "70 %");
@@ -111,10 +122,16 @@ test("automatisme en pause partout : bouton Réactiver", () => {
 test("un groupe en pause disparaît des panneaux et revient à sa réactivation", () => {
   const paused = makeHass({ states: { [ENTITIES.auto_fans]: { state: "off", attributes: {} } } });
   const view = buildView(paused, config, NOW);
-  assert.deepEqual(view.panes.map((p) => p.kind), ["lights"]);
+  assert.deepEqual(
+    view.panes.map((p) => p.kind),
+    ["lights"],
+  );
   assert.ok(view.notes.includes("Automatisme du ventilateur en pause"));
   const resumed = makeHass({ states: { [ENTITIES.auto_fans]: { state: "on", attributes: {} } } });
-  assert.deepEqual(buildView(resumed, config, NOW).panes.map((p) => p.kind), ["lights", "fans"]);
+  assert.deepEqual(
+    buildView(resumed, config, NOW).panes.map((p) => p.kind),
+    ["lights", "fans"],
+  );
 });
 
 test("toutes les notes sont transmises, la carte n'en montre que deux d'emblée", () => {
@@ -134,9 +151,18 @@ test("toutes les notes sont transmises, la carte n'en montre que deux d'emblée"
 test("sans capteur de luminosité, la lumière suit le soleil", () => {
   const off = { "light.chambre": { state: "off", attributes: {} } };
   const hint = (sun, room = {}) =>
-    buildView(makeHass({ room: { illuminance_sensor: null, ...room }, states: { ...off, "sun.sun": { state: sun, attributes: {} } } }), config, NOW).panes[0].hint;
+    buildView(
+      makeHass({
+        room: { illuminance_sensor: null, ...room },
+        states: { ...off, "sun.sun": { state: sun, attributes: {} } },
+      }),
+      config,
+      NOW,
+    ).panes[0].hint;
   assert.equal(hint("above_horizon"), "S'allume après le coucher du soleil");
-  const advance = { "number.lumina_chambre_avant_coucher": { state: "30", attributes: { unit_of_measurement: "min" } } };
+  const advance = {
+    "number.lumina_chambre_avant_coucher": { state: "30", attributes: { unit_of_measurement: "min" } },
+  };
   const withMargin = makeHass({
     room: { illuminance_sensor: null },
     states: { ...off, ...advance, "sun.sun": { state: "above_horizon", attributes: {} } },
@@ -157,22 +183,31 @@ test("teinte de la lumière et capteurs de l'ambiance", () => {
     states: {
       "light.chambre": {
         state: "on",
-        attributes: { brightness: 179, supported_color_modes: ["color_temp"], color_mode: "color_temp", color_temp_kelvin: 2680 },
+        attributes: {
+          brightness: 179,
+          supported_color_modes: ["color_temp"],
+          color_mode: "color_temp",
+          color_temp_kelvin: 2680,
+        },
       },
     },
   });
   const view = buildView(hass, config, NOW);
   assert.equal(view.panes[0].detail, "2\u202f700 K");
   assert.equal(view.panes[1].detail, undefined);
-  assert.deepEqual(view.ambient.map((i) => i.entity), [
-    ENTITIES.apparent_temperature, "sensor.humidite_chambre", "sensor.lux_chambre",
-  ]);
+  assert.deepEqual(
+    view.ambient.map((i) => i.entity),
+    [ENTITIES.apparent_temperature, "sensor.humidite_chambre", "sensor.lux_chambre"],
+  );
 });
 
 test("hide_panes masque des panneaux sans toucher à la phrase", () => {
   const hass = makeHass({ climate: true, room: { fans_override_until: inSeconds(1800) } });
   const view = buildView(hass, { ...config, hide_panes: ["fans", "climate"] }, NOW);
-  assert.deepEqual(view.panes.map((p) => p.kind), ["lights"]);
+  assert.deepEqual(
+    view.panes.map((p) => p.kind),
+    ["lights"],
+  );
   assert.match(view.now.text, /^Ventilateur en manuel/);
 });
 
@@ -229,7 +264,10 @@ test("pièce sans ventilateur : un seul panneau, pas d'onglet ventilateur", () =
     },
   });
   const view = buildView(hass, config, NOW);
-  assert.deepEqual(view.panes.map((p) => p.kind), ["lights"]);
+  assert.deepEqual(
+    view.panes.map((p) => p.kind),
+    ["lights"],
+  );
   const tabs = settingTabs(view.entities, translator("fr")).map((tab) => tab.id);
   assert.deepEqual(tabs, ["lights", "night", "presence"]);
 });
@@ -284,7 +322,10 @@ test("curseur du ventilateur aligné sur ses paliers", () => {
 
 test("clim : troisième panneau avec mode, consigne et comportement en pièce vide", () => {
   const view = buildView(makeHass({ climate: true }), config, NOW);
-  assert.deepEqual(view.panes.map((p) => p.kind), ["lights", "fans", "climate"]);
+  assert.deepEqual(
+    view.panes.map((p) => p.kind),
+    ["lights", "fans", "climate"],
+  );
   const climate = view.panes[2];
   assert.equal(climate.on, true);
   assert.equal(climate.value, "Froid");
@@ -296,7 +337,10 @@ test("clim : troisième panneau avec mode, consigne et comportement en pièce vi
 });
 
 test("clim éteinte : Lumina ne l'allume jamais, pas de consigne", () => {
-  const hass = makeHass({ climate: true, states: { "climate.chambre": { state: "off", attributes: { temperature: 24 } } } });
+  const hass = makeHass({
+    climate: true,
+    states: { "climate.chambre": { state: "off", attributes: { temperature: 24 } } },
+  });
   const climate = buildView(hass, config, NOW).panes[2];
   assert.equal(climate.on, false);
   assert.equal(climate.value, "Éteinte");
@@ -305,7 +349,10 @@ test("clim éteinte : Lumina ne l'allume jamais, pas de consigne", () => {
 });
 
 test("clim éteinte avec consigne de soirée : s'allume à ton arrivée", () => {
-  const hass = makeHass({ climate: true, states: { "climate.chambre": { state: "off", attributes: { temperature: 24 } } } });
+  const hass = makeHass({
+    climate: true,
+    states: { "climate.chambre": { state: "off", attributes: { temperature: 24 } } },
+  });
   hass.states[ENTITIES.evening_climate_temperature].state = "25";
   assert.equal(buildView(hass, config, NOW).panes[2].hint, "S'allume à 25 °C à ton arrivée, en soirée");
 });
@@ -318,7 +365,12 @@ test("clim la nuit sans action : Lumina la laisse tourner", () => {
 test("pièce vide : action sur la clim dans le compte à rebours", () => {
   const hass = makeHass({
     climate: true,
-    room: { occupied: false, lights_off_at: inSeconds(95), climate_vacant_at: inSeconds(840), climate_vacant_action: "eco" },
+    room: {
+      occupied: false,
+      lights_off_at: inSeconds(95),
+      climate_vacant_at: inSeconds(840),
+      climate_vacant_action: "eco",
+    },
   });
   hass.states[ENTITIES.room_state].state = "vacant";
   const view = buildView(hass, config, NOW);
@@ -470,12 +522,23 @@ test("tout en pause, clim comprise : bouton Réactiver", () => {
 test("réglages : onglet clim, ventilateurs à allumer, contrôle jusqu'au matin", () => {
   const view = buildView(makeHass({ climate: true }), config, NOW);
   const tabs = settingTabs(view.entities, translator("fr"));
-  assert.deepEqual(tabs.map((tab) => tab.id), ["lights", "fans", "climate", "night", "presence"]);
+  assert.deepEqual(
+    tabs.map((tab) => tab.id),
+    ["lights", "fans", "climate", "night", "presence"],
+  );
   const climate = tabs.find((tab) => tab.id === "climate");
-  assert.deepEqual(climate.rows.map((r) => r.key), [
-    "auto_climate", "climate_vacant_day", "climate_vacant_night", "climate_vacant_delay",
-    "evening_climate_temperature", "fans_with_climate", "fan_mix_speed",
-  ]);
+  assert.deepEqual(
+    climate.rows.map((r) => r.key),
+    [
+      "auto_climate",
+      "climate_vacant_day",
+      "climate_vacant_night",
+      "climate_vacant_delay",
+      "evening_climate_temperature",
+      "fans_with_climate",
+      "fan_mix_speed",
+    ],
+  );
   assert.equal(climate.rows[1].options.setback, "Modérer");
   const fans = tabs.find((tab) => tab.id === "fans");
   assert.deepEqual(fans.rows.at(-1).options, { all: "Allumer les autres", any: "Ne rien toucher" });
@@ -485,7 +548,10 @@ test("réglages : onglet clim, ventilateurs à allumer, contrôle jusqu'au matin
 test("pièce avec clim seule", () => {
   const hass = makeHass({ climate: true, room: { lights: [], fans: [] } });
   const view = buildView(hass, config, NOW);
-  assert.deepEqual(view.panes.map((p) => p.kind), ["climate"]);
+  assert.deepEqual(
+    view.panes.map((p) => p.kind),
+    ["climate"],
+  );
   assert.equal(view.now.text, "Pièce occupée");
 });
 
@@ -521,8 +587,12 @@ test("sommeil : pièce vide présumée occupée, ventilateur et clim continuent"
     sleep: true,
     climate: true,
     room: {
-      period: "night", occupied: false, sleeping: true, sleeping_until: morningAt().toISOString(),
-      sleep_source: "manual", presumed_occupied: true,
+      period: "night",
+      occupied: false,
+      sleeping: true,
+      sleeping_until: morningAt().toISOString(),
+      sleep_source: "manual",
+      presumed_occupied: true,
     },
     states: { "sensor.temp_chambre": null },
   });
@@ -538,9 +608,14 @@ test("sommeil : gestes jusqu'au réveil, lampe allumée à la main en note", () 
   const hass = makeHass({
     sleep: true,
     room: {
-      period: "night", sleeping: true, sleeping_until: morningAt().toISOString(), sleep_source: "lights_off",
-      bedtime_gesture: "until_wake", fans_override_until: morningAt().toISOString(),
-      lights_override_until: inSeconds(1800), overrides_until_wake: ["fans"],
+      period: "night",
+      sleeping: true,
+      sleeping_until: morningAt().toISOString(),
+      sleep_source: "lights_off",
+      bedtime_gesture: "until_wake",
+      fans_override_until: morningAt().toISOString(),
+      lights_override_until: inSeconds(1800),
+      overrides_until_wake: ["fans"],
     },
   });
   hass.states[ENTITIES.room_state].state = "sleeping";
@@ -554,8 +629,11 @@ test("sommeil deviné au salon : réveil quand la pièce se vide", () => {
   const hass = makeHass({
     sleep: true,
     room: {
-      period: "night", sleeping: true, sleeping_until: morningAt().toISOString(),
-      sleep_source: "lights_off", bedtime_gesture: "until_vacant",
+      period: "night",
+      sleeping: true,
+      sleeping_until: morningAt().toISOString(),
+      sleep_source: "lights_off",
+      bedtime_gesture: "until_vacant",
     },
   });
   assert.deepEqual(buildView(hass, config, NOW).notes, ["Se réveille quand la pièce se vide"]);
@@ -587,10 +665,15 @@ test("réveil du matin : lumière gardée éteinte jusqu'à une heure précise",
 test("Lumina 0.10 : réglages du sommeil dans l'onglet Nuit", () => {
   const view = buildView(makeHass({ sleep: true }), config, NOW);
   const night = settingTabs(view.entities, translator("fr")).find((tab) => tab.id === "night");
-  assert.deepEqual(night.rows.map((r) => r.key), [
-    "forced_night", "sleeping", "night_start", "night_end", "bedtime_gesture", "sleep_brightness",
-  ]);
-  assert.deepEqual(night.rows[4].options, { override: "Durée réglée", until_vacant: "Jusqu'au départ", until_wake: "Jusqu'au réveil" });
+  assert.deepEqual(
+    night.rows.map((r) => r.key),
+    ["forced_night", "sleeping", "night_start", "night_end", "bedtime_gesture", "sleep_brightness"],
+  );
+  assert.deepEqual(night.rows[4].options, {
+    override: "Durée réglée",
+    until_vacant: "Jusqu'au départ",
+    until_wake: "Jusqu'au réveil",
+  });
   assert.equal(night.rows[4].help, undefined);
   assert.equal(night.rows[4].optionHelp.until_vacant, "Sommeil jusqu'à ce que la pièce se vide");
 });
@@ -623,8 +706,14 @@ test("Lumina 0.13 : soirée, pastille et réglages", () => {
     room: { period: "evening" },
     states: {
       [ENTITIES.evening_start]: { state: "19:00:00", attributes: {} },
-      [ENTITIES.evening_brightness]: { state: "70", attributes: { unit_of_measurement: "%", min: 1, max: 100, step: 1 } },
-      [ENTITIES.evening_color_temp]: { state: "3000", attributes: { unit_of_measurement: "K", min: 0, max: 6500, step: 100 } },
+      [ENTITIES.evening_brightness]: {
+        state: "70",
+        attributes: { unit_of_measurement: "%", min: 1, max: 100, step: 1 },
+      },
+      [ENTITIES.evening_color_temp]: {
+        state: "3000",
+        attributes: { unit_of_measurement: "K", min: 0, max: 6500, step: 100 },
+      },
     },
   });
   const view = buildView(hass, config, NOW);
@@ -634,7 +723,8 @@ test("Lumina 0.13 : soirée, pastille et réglages", () => {
   const tabs = settingTabs(view.entities, translator("fr"));
   const lights = tabs.find((tab) => tab.id === "lights").rows.map((r) => r.key);
   assert.deepEqual(lights.slice(lights.indexOf("day_brightness"), lights.indexOf("day_brightness") + 2), [
-    "day_brightness", "evening_brightness",
+    "day_brightness",
+    "evening_brightness",
   ]);
   assert.ok(lights.includes("evening_color_temp"));
   const night = tabs.find((tab) => tab.id === "night").rows;

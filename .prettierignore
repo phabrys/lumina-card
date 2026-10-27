@@ -1,0 +1,9 @@
+# Fichiers générés
+dist/
+build/
+src/icons.ts
+package-lock.json
+node_modules/
+# Prose et page de démo : mises en forme à la main
+*.md
+demo/

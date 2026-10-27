@@ -15,7 +15,10 @@ for (const key of ["document", "customElements", "HTMLElement", "CustomEvent", "
 // La carte n'utilise de `window` que ses minuteries : elles passent par celles
 // de Node, que mock.timers remplace
 globalThis.window = Object.fromEntries(
-  ["setTimeout", "clearTimeout", "setInterval", "clearInterval"].map((key) => [key, (...args) => globalThis[key](...args)]),
+  ["setTimeout", "clearTimeout", "setInterval", "clearInterval"].map((key) => [
+    key,
+    (...args) => globalThis[key](...args),
+  ]),
 );
 
 // La carte doit voir le HTMLElement de happy-dom au chargement
@@ -95,7 +98,10 @@ test("pastille Auto : pause, puis message avec Annuler qui réactive l'automatis
   const { root, calls, notifications } = mount();
   $(root, '.pill[data-kind="lights"]').click();
   await flush();
-  assert.deepEqual(calls.map((c) => `${c.domain}.${c.service}`), ["switch.turn_off"]);
+  assert.deepEqual(
+    calls.map((c) => `${c.domain}.${c.service}`),
+    ["switch.turn_off"],
+  );
   const [toast] = notifications;
   assert.equal(toast.message, "Automatisme des lumières en pause");
   assert.equal(toast.action.text, "Annuler");
@@ -132,7 +138,10 @@ test("le focus reste sur la pastille après une mise à jour d'état", () => {
   const { root, hass } = mount();
   $(root, '.pill[data-kind="fans"]').focus();
   const light = hass.states["light.chambre"];
-  card.hass = { ...hass, states: { ...hass.states, "light.chambre": { ...light, attributes: { ...light.attributes, brightness: 100 } } } };
+  card.hass = {
+    ...hass,
+    states: { ...hass.states, "light.chambre": { ...light, attributes: { ...light.attributes, brightness: 100 } } },
+  };
   assert.equal(root.activeElement?.getAttribute("data-kind"), "fans");
   assert.ok(root.activeElement.classList.contains("pill"));
 });
@@ -149,7 +158,8 @@ test("réglages : le focus passe au bouton Retour, puis revient à la roue dent�
 test("onglets : les flèches changent d'onglet et déplacent le focus", () => {
   const { root } = mount();
   openSettings(root);
-  const key = (k) => root.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, composed: true }));
+  const key = (k) =>
+    root.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, composed: true }));
   $(root, '[role="tab"][aria-selected="true"]').focus();
   key("ArrowRight");
   assert.equal(root.activeElement?.dataset.tab, "fans");
@@ -157,7 +167,10 @@ test("onglets : les flèches changent d'onglet et déplacent le focus", () => {
   key("ArrowLeft");
   key("ArrowLeft");
   assert.equal(root.activeElement?.dataset.tab, "presence");
-  assert.deepEqual([...root.querySelectorAll('[role="tab"]')].map((t) => t.tabIndex), [-1, -1, -1, 0]);
+  assert.deepEqual(
+    [...root.querySelectorAll('[role="tab"]')].map((t) => t.tabIndex),
+    [-1, -1, -1, 0],
+  );
 });
 
 test("curseur au clavier : valeur affichée et envoyée tout de suite", async () => {
@@ -191,7 +204,10 @@ test("options : compact, hide_settings", () => {
   const { root } = mount({ climate: true }, { compact: true, hide_settings: true });
   assert.ok(!$(root, '[data-action="settings"]'), "roue dentée affichée");
   assert.ok(!$(root, ".slider"), "curseur affiché");
-  assert.deepEqual([...root.querySelectorAll(".chip .value")].map((v) => v.textContent), ["70 %", "66 %", "Froid"]);
+  assert.deepEqual(
+    [...root.querySelectorAll(".chip .value")].map((v) => v.textContent),
+    ["70 %", "66 %", "Froid"],
+  );
   assert.equal(card.getCardSize(), 2);
 });
 

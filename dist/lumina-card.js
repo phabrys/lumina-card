@@ -634,7 +634,16 @@ function buildView(hass, config, now, pending = {}) {
     const room = resolveRoom(hass, deviceOf(hass, config));
     const name = roomName(hass, config, room);
     const empty = {
-        name, night: false, evening: false, forcedNight: false, sleeping: false, notes: [], panes: [], ambient: [], ticking: false, entities: room,
+        name,
+        night: false,
+        evening: false,
+        forcedNight: false,
+        sleeping: false,
+        notes: [],
+        panes: [],
+        ambient: [],
+        ticking: false,
+        entities: room,
     };
     if (!room.room_state) {
         return { ...empty, status: "missing", now: { text: t("missing"), icon: "alert", tone: "alert" } };
@@ -706,9 +715,13 @@ function buildView(hass, config, now, pending = {}) {
     const climateAction = a.climate_vacant_action;
     if (climateAt && climateOn && climateAction && climateAction !== "none") {
         const heating = climateIds.some((id) => hass.states[id]?.state === "heat");
-        const key = climateAction === "off" ? "climate_off_in"
-            : climateAction === "eco" ? "climate_eco_in"
-                : heating ? "climate_setback_heat_in" : "climate_setback_in";
+        const key = climateAction === "off"
+            ? "climate_off_in"
+            : climateAction === "eco"
+                ? "climate_eco_in"
+                : heating
+                    ? "climate_setback_heat_in"
+                    : "climate_setback_in";
         scheduled.push({ at: climateAt, text: (d) => t(key, { t: d }) });
     }
     scheduled.sort((x, y) => x.at.getTime() - y.at.getTime());
@@ -728,7 +741,10 @@ function buildView(hass, config, now, pending = {}) {
         const timed = manual.filter((g) => !g.morning && g.until);
         if (timed.length) {
             const until = timed.map((g) => g.until).sort((x, y) => x.getTime() - y.getTime())[0];
-            notes.push(t("manual", { what: joinWords(timed.map((g) => g.word), t("w_and")), h: clock(until) }));
+            notes.push(t("manual", {
+                what: joinWords(timed.map((g) => g.word), t("w_and")),
+                h: clock(until),
+            }));
         }
         if (!occupied && scheduled.length) {
             notes.push(scheduled[0].text(countdown(scheduled[0].at)));
@@ -755,14 +771,20 @@ function buildView(hass, config, now, pending = {}) {
         const h = until ? clock(until) : "…";
         line = {
             text: !timed.length
-                ? t(wake ? "manual_wake" : "manual_morning", { what: joinWords(morning.map((g) => g.word), and), h })
+                ? t(wake ? "manual_wake" : "manual_morning", {
+                    what: joinWords(morning.map((g) => g.word), and),
+                    h,
+                })
                 : morning.length
                     ? t(wake ? "manual_mixed_wake" : "manual_mixed", {
                         what: joinWords(timed.map((g) => g.word), and),
                         h,
                         rest: joinWords(morning.map((g) => g.word), and).toLowerCase(),
                     })
-                    : t("manual", { what: joinWords(timed.map((g) => g.word), and), h }),
+                    : t("manual", {
+                        what: joinWords(timed.map((g) => g.word), and),
+                        h,
+                    }),
             icon: "hand",
             tone: "manual",
             action: room.resume ? { kind: "resume", label: t("resume") } : undefined,
@@ -814,7 +836,7 @@ function buildView(hass, config, now, pending = {}) {
         if (climatePaused)
             notes.push(t("note_climate_paused"));
     }
-    const applied = hasClimate && !occupied ? a.climate_vacant_applied ?? null : null;
+    const applied = hasClimate && !occupied ? (a.climate_vacant_applied ?? null) : null;
     if (applied === "off" || applied === "eco" || applied === "setback") {
         notes.push(t(applied === "off" ? "note_climate_off" : applied === "eco" ? "note_climate_eco" : "note_climate_setback"));
     }
@@ -876,7 +898,10 @@ function deadSensorsNote(hass, a, occupied, t, language, now) {
         .sort((x, y) => x.getTime() - y.getTime());
     const since = changes.length ? formatSince(changes[0], now, language, t) : "";
     if (dead.length < sensors.length) {
-        return t("note_sensor_dead", { name: joinWords(dead.map((e) => friendly(hass, e)), t("w_and")), since });
+        return t("note_sensor_dead", {
+            name: joinWords(dead.map((e) => friendly(hass, e)), t("w_and")),
+            since,
+        });
     }
     const plural = sensors.length > 1;
     if (occupied)
@@ -893,12 +918,12 @@ function formatSince(date, now, language, t) {
 }
 /** « lumière, ventilateur et clim », avec une majuscule initiale. */
 function joinWords(words, and) {
-    const text = words.length > 1 ? `${words.slice(0, -1).join(", ")} ${and} ${words[words.length - 1]}` : words[0] ?? "";
+    const text = words.length > 1 ? `${words.slice(0, -1).join(", ")} ${and} ${words[words.length - 1]}` : (words[0] ?? "");
     return text.charAt(0).toUpperCase() + text.slice(1);
 }
 /** L'échéance tombe-t-elle à l'heure de fin de nuit ? (contrôle manuel « jusqu'au matin ») */
 function isNightEnd(hass, nightEnd, until) {
-    const [h, m] = (nightEnd ? hass.states[nightEnd]?.state ?? "" : "").split(":").map(Number);
+    const [h, m] = (nightEnd ? (hass.states[nightEnd]?.state ?? "") : "").split(":").map(Number);
     return Number.isFinite(h) && Number.isFinite(m) && until.getHours() === h && until.getMinutes() === m;
 }
 function isClimateOn(state) {
@@ -950,7 +975,7 @@ function lightsPane(hass, room, a, t, ids, auto, manualHint, { night, sleeping }
     else if (auto === "manual")
         hint = manualHint;
     else if (on) {
-        const delay = num(hass, night ? room.night_light_off_delay ?? room.light_off_delay : room.light_off_delay);
+        const delay = num(hass, night ? (room.night_light_off_delay ?? room.light_off_delay) : room.light_off_delay);
         hint = delay !== null ? t("hint_lights_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
     }
     else if (a.lights_held) {
@@ -959,7 +984,9 @@ function lightsPane(hass, room, a, t, ids, auto, manualHint, { night, sleeping }
     }
     else if (sleeping) {
         const nightLight = num(hass, room.sleep_brightness);
-        hint = nightLight ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) }) : t("hint_no_sleep_light");
+        hint = nightLight
+            ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) })
+            : t("hint_no_sleep_light");
     }
     else if (a.daylight_locked)
         hint = t(a.illuminance_sensor ? "hint_daylight" : "hint_sun_up");
@@ -968,19 +995,30 @@ function lightsPane(hass, room, a, t, ids, auto, manualHint, { night, sleeping }
     else {
         const threshold = num(hass, room.lux_threshold);
         // Sans capteur de luminosité, Lumina 0.14 suit le soleil.
-        hint = a.illuminance_sensor && threshold !== null
-            ? t("hint_lights_below", { v: formatNumber(threshold, language) })
-            : !a.illuminance_sensor && hass.states["sun.sun"]?.state === "above_horizon"
-                ? sunsetHint(num(hass, room.sunset_advance), t)
-                : t("hint_lights_auto");
+        hint =
+            a.illuminance_sensor && threshold !== null
+                ? t("hint_lights_below", { v: formatNumber(threshold, language) })
+                : !a.illuminance_sensor && hass.states["sun.sun"]?.state === "above_horizon"
+                    ? sunsetHint(num(hass, room.sunset_advance), t)
+                    : t("hint_lights_auto");
     }
-    return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, detail, hint, auto, autoEntity: room.auto_lights };
+    return {
+        kind: "lights",
+        title: t("lights"),
+        entities: ids,
+        on,
+        level,
+        step: 1,
+        value,
+        detail,
+        hint,
+        auto,
+        autoEntity: room.auto_lights,
+    };
 }
 /** Sans capteur de luminosité, en journée : allumage avant le coucher du soleil (Lumina 0.15). */
 function sunsetHint(advance, t) {
-    return advance
-        ? t("hint_lights_before_sunset", { d: formatDelay(advance * 60, t) })
-        : t("hint_lights_after_sunset");
+    return advance ? t("hint_lights_before_sunset", { d: formatDelay(advance * 60, t) }) : t("hint_lights_after_sunset");
 }
 function fansPane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, language, pending) {
     const states = ids.map((id) => hass.states[id]);
@@ -997,7 +1035,7 @@ function fansPane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, 
     }
     const value = on ? (level !== null && level > 0 ? `${level} %` : t("fan_on")) : t("fan_off");
     let hint;
-    const threshold = num(hass, night ? room.night_temperature_threshold ?? room.temperature_threshold : room.temperature_threshold);
+    const threshold = num(hass, night ? (room.night_temperature_threshold ?? room.temperature_threshold) : room.temperature_threshold);
     if (auto === "paused")
         hint = t("hint_paused_fans");
     else if (auto === "manual")
@@ -1018,21 +1056,34 @@ function fansPane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, 
         else if (presumed)
             hint = t("hint_fans_until_wake");
         else {
-            const delay = num(hass, night ? room.night_fan_off_delay ?? room.fan_off_delay : room.fan_off_delay);
+            const delay = num(hass, night ? (room.night_fan_off_delay ?? room.fan_off_delay) : room.fan_off_delay);
             hint = delay !== null ? t("hint_fans_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
         }
     }
     else if (a.temperature_sensor) {
-        hint = threshold === null
-            ? t("hint_fans_presence")
-            : t(a.humidity_sensor ? "hint_fans_at_apparent" : "hint_fans_at", { v: formatNumber(threshold, language, 1) });
+        hint =
+            threshold === null
+                ? t("hint_fans_presence")
+                : t(a.humidity_sensor ? "hint_fans_at_apparent" : "hint_fans_at", { v: formatNumber(threshold, language, 1) });
     }
     else
         hint = t("hint_fans_presence");
     // Un tour toutes les 2,4 s à basse vitesse, 0,45 s à pleine vitesse
     const spin = on ? 2.4 - ((level ?? 60) / 100) * 1.95 : undefined;
     const step = Math.max(1, Number(states.find((s) => s?.attributes.percentage_step)?.attributes.percentage_step ?? 1));
-    return { kind: "fans", title: t("fans"), entities: ids, on, level, step, value, hint, auto, autoEntity: room.auto_fans, spin };
+    return {
+        kind: "fans",
+        title: t("fans"),
+        entities: ids,
+        on,
+        level,
+        step,
+        value,
+        hint,
+        auto,
+        autoEntity: room.auto_fans,
+        spin,
+    };
 }
 function climatePane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, language, pending) {
     const states = ids.map((id) => hass.states[id]).filter((s) => !!s);
@@ -1043,7 +1094,12 @@ function climatePane(hass, room, a, t, ids, auto, manualHint, { night, presumed 
     let value = t("off");
     if (on) {
         const hvac = {
-            cool: "hvac_cool", heat: "hvac_heat", heat_cool: "hvac_auto", auto: "hvac_auto", dry: "hvac_dry", fan_only: "hvac_fan_only",
+            cool: "hvac_cool",
+            heat: "hvac_heat",
+            heat_cool: "hvac_auto",
+            auto: "hvac_auto",
+            dry: "hvac_dry",
+            fan_only: "hvac_fan_only",
         };
         value = main.attributes.preset_mode === "eco" ? t("preset_eco") : hvac[mode] ? t(hvac[mode]) : t("on");
         if (ids.length > 1)
@@ -1087,19 +1143,33 @@ function climatePane(hass, room, a, t, ids, auto, manualHint, { night, presumed 
     else if (delay === null)
         hint = t("hint_auto_on");
     else {
-        const key = action === "off" ? "hint_climate_off_after" : action === "eco" ? "hint_climate_eco_after" : "hint_climate_setback_after";
+        const key = action === "off"
+            ? "hint_climate_off_after"
+            : action === "eco"
+                ? "hint_climate_eco_after"
+                : "hint_climate_setback_after";
         hint = t(key, { d: formatDelay(delay, t) });
     }
     return {
-        kind: "climate", title: t("climate"), entities: ids, on, level: null, step: 1, value, hint, auto,
-        autoEntity: room.auto_climate, mode, setpoint,
+        kind: "climate",
+        title: t("climate"),
+        entities: ids,
+        on,
+        level: null,
+        step: 1,
+        value,
+        hint,
+        auto,
+        autoEntity: room.auto_climate,
+        mode,
+        setpoint,
     };
 }
 function ambient(hass, room, a, t, language) {
     const items = [];
     const measured = num(hass, a.temperature_sensor);
     const apparent = num(hass, room.apparent_temperature);
-    if (apparent !== null) {
+    if (apparent !== null && room.apparent_temperature) {
         items.push({
             icon: "thermometer",
             entity: room.apparent_temperature,
@@ -1108,31 +1178,47 @@ function ambient(hass, room, a, t, language) {
             title: measured !== null ? t("measured", { v: formatNumber(measured, language, 1) }) : undefined,
         });
     }
-    else if (measured !== null) {
-        items.push({ icon: "thermometer", entity: a.temperature_sensor, value: `${formatNumber(measured, language, 1)} °C` });
+    else if (measured !== null && a.temperature_sensor) {
+        items.push({
+            icon: "thermometer",
+            entity: a.temperature_sensor,
+            value: `${formatNumber(measured, language, 1)} °C`,
+        });
     }
     const humidity = num(hass, a.humidity_sensor);
-    if (humidity !== null)
+    if (humidity !== null && a.humidity_sensor) {
         items.push({ icon: "water", entity: a.humidity_sensor, value: `${formatNumber(humidity, language)} %` });
+    }
     const lux = num(hass, a.illuminance_sensor);
-    if (lux !== null)
+    if (lux !== null && a.illuminance_sensor) {
         items.push({ icon: "brightness", entity: a.illuminance_sensor, value: `${formatNumber(lux, language)} lx` });
+    }
     return items;
 }
 const ALL_ANY = { all: "o_all", any: "o_any" };
 const CLIMATE_ACTIONS = {
-    off: "o_climate_off", eco: "o_climate_eco", setback: "o_climate_setback", none: "o_climate_none",
+    off: "o_climate_off",
+    eco: "o_climate_eco",
+    setback: "o_climate_setback",
+    none: "o_climate_none",
 };
 const FANS_WITH_CLIMATE = { normal: "o_fans_normal", mix: "o_fans_mix", off: "o_fans_off" };
 const BEDTIME = {
-    override: "o_bedtime_override", until_vacant: "o_bedtime_until_vacant", until_wake: "o_bedtime_until_wake",
+    override: "o_bedtime_override",
+    until_vacant: "o_bedtime_until_vacant",
+    until_wake: "o_bedtime_until_wake",
 };
 const BEDTIME_HELP = {
-    override: "h_bedtime_override", until_vacant: "h_bedtime_until_vacant", until_wake: "h_bedtime_until_wake",
+    override: "h_bedtime_override",
+    until_vacant: "h_bedtime_until_vacant",
+    until_wake: "h_bedtime_until_wake",
 };
 const TABS = [
     {
-        id: "lights", label: "tab_lights", icon: "lightbulb", rows: [
+        id: "lights",
+        label: "tab_lights",
+        icon: "lightbulb",
+        rows: [
             ["auto_lights", "switch", "s_auto"],
             ["lux_threshold", "number", "s_lux_threshold"],
             ["day_brightness", "number", "s_day_brightness"],
@@ -1153,7 +1239,10 @@ const TABS = [
         ],
     },
     {
-        id: "fans", label: "tab_fans", icon: "fan", rows: [
+        id: "fans",
+        label: "tab_fans",
+        icon: "fan",
+        rows: [
             ["auto_fans", "switch", "s_auto"],
             ["temperature_threshold", "number", "s_temperature_threshold"],
             ["night_temperature_threshold", "number", "s_night_temperature_threshold"],
@@ -1165,7 +1254,10 @@ const TABS = [
         ],
     },
     {
-        id: "climate", label: "tab_climate", icon: "climate", rows: [
+        id: "climate",
+        label: "tab_climate",
+        icon: "climate",
+        rows: [
             ["auto_climate", "switch", "s_auto"],
             ["climate_vacant_day", "select", "s_climate_vacant_day", "h_climate_vacant", CLIMATE_ACTIONS],
             ["climate_vacant_night", "select", "s_climate_vacant_night", "h_climate_vacant_night", CLIMATE_ACTIONS],
@@ -1177,7 +1269,10 @@ const TABS = [
         ],
     },
     {
-        id: "night", label: "tab_night", icon: "moon", rows: [
+        id: "night",
+        label: "tab_night",
+        icon: "moon",
+        rows: [
             ["forced_night", "switch", "s_forced_night", "h_forced_night"],
             ["sleeping", "switch", "s_sleeping", "h_sleeping"],
             // Lumina 0.13
@@ -1194,7 +1289,10 @@ const TABS = [
         ],
     },
     {
-        id: "presence", label: "tab_presence", icon: "presence", rows: [
+        id: "presence",
+        label: "tab_presence",
+        icon: "presence",
+        rows: [
             ["vacancy_confirmation", "number", "s_vacancy_confirmation", "h_vacancy_confirmation"],
             ["override_duration", "number", "s_override_duration", "h_override_duration"],
         ],
@@ -1209,7 +1307,11 @@ function settingTabs(room, t) {
         rows: tab.rows
             .filter(([key]) => room[key])
             .map(([key, kind, label, help, options, optionHelp]) => ({
-            key, entity: room[key], kind, label: t(rowLabel(room, key, label)), help: help ? t(help) : undefined,
+            key,
+            entity: room[key],
+            kind,
+            label: t(rowLabel(room, key, label)),
+            help: help ? t(help) : undefined,
             options: options && translateValues(options, t),
             optionHelp: optionHelp && translateValues(optionHelp, t),
         })),
@@ -1862,11 +1964,6 @@ function formatValue(value, step, language) {
     return value.toLocaleString(language, { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
 /**
- * Tout ce qui est affiché sauf les textes de la phrase et des notes, où vivent
- * les comptes à rebours : si cette clé ne change pas d'une seconde à l'autre,
- * il suffit de mettre ces textes à jour.
- */
-/**
  * Sélecteur qui retrouve un élément après un redessin, par ses attributs data-*
  * et son rôle : le focus du clavier ne se perd pas à chaque mise à jour.
  */
@@ -1891,6 +1988,11 @@ const PANE_ICONS = {
 function paneIcon(pane) {
     return PANE_ICONS[pane.kind][pane.on ? 0 : 1];
 }
+/**
+ * Tout ce qui est affiché sauf les textes de la phrase et des notes, où vivent
+ * les comptes à rebours : si cette clé ne change pas d'une seconde à l'autre,
+ * il suffit de mettre ces textes à jour.
+ */
 function tickKey(view) {
     return JSON.stringify({ ...view, now: { ...view.now, text: "" }, notes: view.notes.length });
 }
@@ -2309,7 +2411,10 @@ class LuminaCard extends BaseElement {
             return;
         const t = translator(languageOf(this._hass));
         const message = t(pane.kind === "lights" ? "note_lights_paused" : pane.kind === "fans" ? "note_fans_paused" : "note_climate_paused");
-        this._notify(message, { text: t("undo"), action: () => this._call("switch", "turn_on", { entity_id: entityId }) });
+        this._notify(message, {
+            text: t("undo"),
+            action: () => void this._call("switch", "turn_on", { entity_id: entityId }),
+        });
     }
     _moreInfo(entityId) {
         this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
@@ -2347,24 +2452,24 @@ class LuminaCard extends BaseElement {
                 break;
             case "period":
                 if (room.forced_night) {
-                    this._call("switch", this._view.forcedNight ? "turn_off" : "turn_on", { entity_id: room.forced_night });
+                    void this._call("switch", this._view.forcedNight ? "turn_off" : "turn_on", { entity_id: room.forced_night });
                 }
                 break;
             case "resume":
                 if (room.resume)
-                    this._call("button", "press", { entity_id: room.resume });
+                    void this._call("button", "press", { entity_id: room.resume });
                 break;
             case "sleep":
             case "wake":
                 if (room.sleeping) {
                     const asleep = this._hass.states[room.sleeping]?.state === "on";
-                    this._call("switch", action === "wake" || asleep ? "turn_off" : "turn_on", { entity_id: room.sleeping });
+                    void this._call("switch", action === "wake" || asleep ? "turn_off" : "turn_on", { entity_id: room.sleeping });
                 }
                 break;
             case "enable": {
                 const ids = [room.auto_lights, room.auto_fans, room.auto_climate].filter((id) => !!id && this._hass.states[id]?.state === "off");
                 if (ids.length)
-                    this._call("switch", "turn_on", { entity_id: ids });
+                    void this._call("switch", "turn_on", { entity_id: ids });
                 break;
             }
             case "auto": {
@@ -2372,27 +2477,27 @@ class LuminaCard extends BaseElement {
                 if (!pane?.autoEntity)
                     break;
                 if (pane.auto === "manual" && room.resume)
-                    this._call("button", "press", { entity_id: room.resume });
+                    void this._call("button", "press", { entity_id: room.resume });
                 else if (pane.auto === "paused")
-                    this._call("switch", "turn_on", { entity_id: pane.autoEntity });
+                    void this._call("switch", "turn_on", { entity_id: pane.autoEntity });
                 else
-                    this._pause(pane);
+                    void this._pause(pane);
                 break;
             }
             case "toggle": {
                 const pane = this._pane(kind);
                 if (!pane)
                     break;
-                this._call("homeassistant", pane.on ? "turn_off" : "turn_on", { entity_id: pane.entities });
+                void this._call("homeassistant", pane.on ? "turn_off" : "turn_on", { entity_id: pane.entities });
                 break;
             }
             case "switch":
                 if (entity)
-                    this._call("switch", "toggle", { entity_id: entity });
+                    void this._call("switch", "toggle", { entity_id: entity });
                 break;
             case "select":
                 if (entity)
-                    this._call("select", "select_option", { entity_id: entity, option: target.dataset.option });
+                    void this._call("select", "select_option", { entity_id: entity, option: target.dataset.option });
                 break;
             case "step":
                 if (entity)
@@ -2407,7 +2512,7 @@ class LuminaCard extends BaseElement {
         const target = event.target;
         if (target.dataset.action !== "time" || !target.dataset.entity || !target.value)
             return;
-        this._call("time", "set_value", { entity_id: target.dataset.entity, time: `${target.value}:00` });
+        void this._call("time", "set_value", { entity_id: target.dataset.entity, time: `${target.value}:00` });
         target.blur();
     }
     /** Réglage numérique : valeur affichée tout de suite, envoyée après une pause. */
@@ -2525,7 +2630,14 @@ class LuminaCard extends BaseElement {
         const step = pane?.step ?? 1;
         const small = Math.max(5, step);
         const big = Math.max(20, step);
-        const delta = { ArrowRight: small, ArrowUp: small, ArrowLeft: -small, ArrowDown: -small, PageUp: big, PageDown: -big }[event.key];
+        const delta = {
+            ArrowRight: small,
+            ArrowUp: small,
+            ArrowLeft: -small,
+            ArrowDown: -small,
+            PageUp: big,
+            PageDown: -big,
+        }[event.key];
         let value;
         if (delta !== undefined)
             value = snap(Math.min(100, Math.max(0, current + delta)), step);
@@ -2544,10 +2656,14 @@ class LuminaCard extends BaseElement {
     _onTabKey(event, tab) {
         const tabs = [...this._root.querySelectorAll('[role="tab"]')];
         const index = tabs.indexOf(tab);
-        const next = event.key === "ArrowRight" ? tabs[(index + 1) % tabs.length]
-            : event.key === "ArrowLeft" ? tabs[(index - 1 + tabs.length) % tabs.length]
-                : event.key === "Home" ? tabs[0]
-                    : event.key === "End" ? tabs[tabs.length - 1]
+        const next = event.key === "ArrowRight"
+            ? tabs[(index + 1) % tabs.length]
+            : event.key === "ArrowLeft"
+                ? tabs[(index - 1 + tabs.length) % tabs.length]
+                : event.key === "Home"
+                    ? tabs[0]
+                    : event.key === "End"
+                        ? tabs[tabs.length - 1]
                         : undefined;
         if (!next)
             return;
@@ -2567,21 +2683,21 @@ class LuminaCard extends BaseElement {
             const lights = pane.entities.filter((e) => e.startsWith("light."));
             const others = pane.entities.filter((e) => !e.startsWith("light."));
             if (value === 0)
-                this._call("homeassistant", "turn_off", { entity_id: pane.entities });
+                void this._call("homeassistant", "turn_off", { entity_id: pane.entities });
             else {
                 if (lights.length)
-                    this._call("light", "turn_on", { entity_id: lights, brightness_pct: value });
+                    void this._call("light", "turn_on", { entity_id: lights, brightness_pct: value });
                 if (others.length)
-                    this._call("homeassistant", "turn_on", { entity_id: others });
+                    void this._call("homeassistant", "turn_on", { entity_id: others });
             }
         }
         else {
             const fans = pane.entities.filter((e) => e.startsWith("fan."));
             const others = pane.entities.filter((e) => !e.startsWith("fan."));
             if (fans.length)
-                this._call("fan", "set_percentage", { entity_id: fans, percentage: value });
+                void this._call("fan", "set_percentage", { entity_id: fans, percentage: value });
             if (others.length)
-                this._call("homeassistant", value === 0 ? "turn_off" : "turn_on", { entity_id: others });
+                void this._call("homeassistant", value === 0 ? "turn_off" : "turn_on", { entity_id: others });
         }
         window.clearTimeout(this._pendingTimers[kind]);
         this._pendingTimers[kind] = window.setTimeout(() => {
@@ -2602,7 +2718,10 @@ class LuminaCard extends BaseElement {
 const EditorBase = globalThis.HTMLElement ?? class {
 };
 function escAttr(value) {
-    return String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;");
 }
 class LuminaCardEditor extends EditorBase {
     _config = { type: "custom:lumina-card" };

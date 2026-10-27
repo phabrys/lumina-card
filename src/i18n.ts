@@ -196,7 +196,8 @@ const fr = {
   o_fans_off: "Arrêtés",
   s_fan_mix_speed: "Vitesse de brassage",
   s_night_override_until_morning: "Contrôle manuel jusqu'au matin",
-  h_night_override_until_morning: "La nuit, une extinction à la main tient jusqu'au matin ; un allumage garde la durée réglée",
+  h_night_override_until_morning:
+    "La nuit, une extinction à la main tient jusqu'au matin ; un allumage garde la durée réglée",
   s_sleeping: "Sommeil",
   h_sleeping: "Pas d'allumage, gestes tenus jusqu'au réveil. Fin de nuit au plus tard",
   s_bedtime_gesture: "Extinction à la main la nuit",
@@ -433,7 +434,8 @@ const en: Strings = {
   o_fans_off: "Off",
   s_fan_mix_speed: "Circulation speed",
   s_night_override_until_morning: "Manual control until morning",
-  h_night_override_until_morning: "At night, turning off by hand holds until morning; turning on keeps the set duration",
+  h_night_override_until_morning:
+    "At night, turning off by hand holds until morning; turning on keeps the set duration",
   s_sleeping: "Sleep",
   h_sleeping: "No turn-on, manual changes held until wake-up. Ends at night's end at the latest",
   s_bedtime_gesture: "Turning off by hand at night",

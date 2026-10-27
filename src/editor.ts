@@ -8,8 +8,11 @@ import { languageOf, luminaDevices, translator, type CardConfig, type Hass } fro
 const EditorBase: typeof HTMLElement =
   (globalThis as { HTMLElement?: typeof HTMLElement }).HTMLElement ?? (class {} as typeof HTMLElement);
 
-function escAttr(value: unknown): string {
-  return String(value ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+function escAttr(value: string | null | undefined): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
 }
 
 export class LuminaCardEditor extends EditorBase {
@@ -91,7 +94,8 @@ export class LuminaCardEditor extends EditorBase {
     // Champs vides retirés pour garder un YAML propre
     const clean = Object.fromEntries(
       Object.entries(config).filter(
-        ([, value]) => value !== undefined && value !== "" && value !== false && !(Array.isArray(value) && !value.length),
+        ([, value]) =>
+          value !== undefined && value !== "" && value !== false && !(Array.isArray(value) && !value.length),
       ),
     ) as unknown as CardConfig;
     this._config = clean;

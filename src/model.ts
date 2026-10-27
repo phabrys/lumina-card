@@ -7,11 +7,85 @@ import { translator, type StringKey, type Translate } from "./i18n.js";
 
 // --- Types minimaux de Home Assistant ----------------------------------------
 
+/** Attributs d'entité lus par la carte ; les autres restent de type inconnu. */
+export interface HassAttributes {
+  [key: string]: unknown;
+  friendly_name?: string;
+  unit_of_measurement?: string;
+  // Lumière
+  brightness?: number;
+  color_mode?: string;
+  color_temp_kelvin?: number;
+  supported_color_modes?: string[];
+  // Ventilateur
+  percentage?: number;
+  percentage_step?: number;
+  // Clim
+  preset_mode?: string;
+  temperature?: number;
+  min_temp?: number;
+  max_temp?: number;
+  target_temp_step?: number;
+  // Réglages Lumina (number, select) et switch de nuit forcée
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: string[];
+  until?: string | null;
+}
+
 export interface HassEntity {
   entity_id: string;
   state: string;
-  attributes: Record<string, any>;
+  attributes: HassAttributes;
   last_changed?: string;
+}
+
+/**
+ * Attributs du capteur d'état d'une pièce, publiés par l'intégration Lumina
+ * (`RoomController.attributes`). Tous facultatifs : une version plus ancienne
+ * de Lumina n'en publie qu'une partie. Les dates sont des textes ISO.
+ */
+export interface RoomStateAttributes extends HassAttributes {
+  period?: "day" | "evening" | "night";
+  occupied?: boolean;
+  sleeping?: boolean;
+  sleeping_until?: string | null;
+  sleep_source?: string | null;
+  sleep_entity?: string | null;
+  presumed_occupied?: boolean;
+  bedtime_gesture?: string;
+  lights_held?: boolean;
+  wake_hold_until?: string | null;
+  daylight_locked?: boolean;
+  vacancy_pending?: boolean;
+  vacancy_at?: string | null;
+  presence_hold_active?: boolean;
+  presence_unknown?: boolean;
+  lights_warning?: boolean;
+  lights_off_at?: string | null;
+  fans_off_at?: string | null;
+  lights_override_until?: string | null;
+  fans_override_until?: string | null;
+  climate_override_until?: string | null;
+  /** Groupes en contrôle manuel jusqu'au réveil (Lumina 0.10). */
+  overrides_until_wake?: string[];
+  /** Ancien nom de `overrides_until_wake` (Lumina 0.9.2). */
+  overrides_until_morning?: string[];
+  climate_running?: boolean;
+  climate_vacant_action?: string;
+  climate_vacant_at?: string | null;
+  climate_vacant_applied?: string | null;
+  fans_with_climate?: string;
+  // Entités de la pièce
+  presence_sensors?: string[];
+  presence_hold_entities?: string[];
+  illuminance_sensor?: string | null;
+  temperature_sensor?: string | null;
+  humidity_sensor?: string | null;
+  lights?: string[];
+  fans?: string[];
+  climates?: string[];
 }
 
 export interface EntityRegistryEntry {
@@ -52,15 +126,50 @@ export interface CardConfig {
 
 /** Clés de traduction des entités Lumina, telles que définies par l'intégration. */
 export type LuminaKey =
-  | "room_state" | "apparent_temperature" | "auto_lights" | "auto_fans" | "auto_climate" | "forced_night"
-  | "resume" | "lights_mode" | "fans_mode" | "night_start" | "night_end" | "night_override_until_morning"
-  | "lux_threshold" | "day_brightness" | "night_brightness" | "day_color_temp" | "night_color_temp"
-  | "light_off_delay" | "night_light_off_delay" | "light_warning_duration" | "daylight_off_lux"
-  | "temperature_threshold" | "night_temperature_threshold" | "fan_min_speed" | "fan_speed_range"
-  | "fan_off_delay" | "night_fan_off_delay" | "vacancy_confirmation" | "override_duration"
-  | "climate_vacant_day" | "climate_vacant_night" | "climate_vacant_delay" | "fans_with_climate" | "fan_mix_speed"
-  | "sleeping" | "bedtime_gesture" | "sleep_brightness" | "night_end_day_off" | "night_end_holidays"
-  | "evening_start" | "evening_brightness" | "evening_color_temp" | "sunset_advance" | "sunrise_delay"
+  | "room_state"
+  | "apparent_temperature"
+  | "auto_lights"
+  | "auto_fans"
+  | "auto_climate"
+  | "forced_night"
+  | "resume"
+  | "lights_mode"
+  | "fans_mode"
+  | "night_start"
+  | "night_end"
+  | "night_override_until_morning"
+  | "lux_threshold"
+  | "day_brightness"
+  | "night_brightness"
+  | "day_color_temp"
+  | "night_color_temp"
+  | "light_off_delay"
+  | "night_light_off_delay"
+  | "light_warning_duration"
+  | "daylight_off_lux"
+  | "temperature_threshold"
+  | "night_temperature_threshold"
+  | "fan_min_speed"
+  | "fan_speed_range"
+  | "fan_off_delay"
+  | "night_fan_off_delay"
+  | "vacancy_confirmation"
+  | "override_duration"
+  | "climate_vacant_day"
+  | "climate_vacant_night"
+  | "climate_vacant_delay"
+  | "fans_with_climate"
+  | "fan_mix_speed"
+  | "sleeping"
+  | "bedtime_gesture"
+  | "sleep_brightness"
+  | "night_end_day_off"
+  | "night_end_holidays"
+  | "evening_start"
+  | "evening_brightness"
+  | "evening_color_temp"
+  | "sunset_advance"
+  | "sunrise_delay"
   | "evening_climate_temperature";
 
 export type RoomEntities = Partial<Record<LuminaKey, string>>;
@@ -90,7 +199,7 @@ export function resolveRoom(hass: Hass, deviceId: string | undefined): RoomEntit
   if (!deviceId) return {};
   const registry = hass.entities ?? {};
   let rooms = roomCache.get(registry);
-  if (!rooms) roomCache.set(registry, (rooms = new Map()));
+  if (!rooms) roomCache.set(registry, (rooms = new Map<string, RoomEntities>()));
   let room = rooms.get(deviceId);
   if (room) return room;
   room = {};
@@ -107,8 +216,7 @@ export function roomName(hass: Hass, config: CardConfig, room: RoomEntities): st
   if (config.name) return config.name;
   const deviceId = deviceOf(hass, config);
   const device = deviceId ? hass.devices?.[deviceId] : undefined;
-  const areaId =
-    device?.area_id ?? (room.room_state ? hass.entities?.[room.room_state]?.area_id : undefined);
+  const areaId = device?.area_id ?? (room.room_state ? hass.entities?.[room.room_state]?.area_id : undefined);
   if (areaId && hass.areas?.[areaId]) return hass.areas[areaId].name;
   return device?.name_by_user || device?.name || "Lumina";
 }
@@ -199,7 +307,7 @@ const HOLD_INACTIVE = new Set(["off", "idle", "standby", "paused", "unavailable"
 
 function parseDate(value: unknown): Date | null {
   if (typeof value !== "string" && !(value instanceof Date)) return null;
-  const date = new Date(value as string);
+  const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
@@ -246,18 +354,22 @@ export function languageOf(hass: Hass): string {
  * Calcule l'affichage d'une pièce. `now` est passé explicitement pour que les
  * comptes à rebours soient testables.
  */
-export function buildView(
-  hass: Hass,
-  config: CardConfig,
-  now: Date,
-  pending: Pending = {},
-): RoomView {
+export function buildView(hass: Hass, config: CardConfig, now: Date, pending: Pending = {}): RoomView {
   const language = languageOf(hass);
   const t = translator(language);
   const room = resolveRoom(hass, deviceOf(hass, config));
   const name = roomName(hass, config, room);
   const empty: Omit<RoomView, "status" | "now"> = {
-    name, night: false, evening: false, forcedNight: false, sleeping: false, notes: [], panes: [], ambient: [], ticking: false, entities: room,
+    name,
+    night: false,
+    evening: false,
+    forcedNight: false,
+    sleeping: false,
+    notes: [],
+    panes: [],
+    ambient: [],
+    ticking: false,
+    entities: room,
   };
 
   if (!room.room_state) {
@@ -268,7 +380,7 @@ export function buildView(
     return { ...empty, status: "unavailable", now: { text: t("unavailable"), icon: "alert", tone: "alert" } };
   }
 
-  const a = roomState.attributes;
+  const a: RoomStateAttributes = roomState.attributes;
   const night = a.period === "night";
   const evening = a.period === "evening";
   // En sommeil, Lumina applique les réglages de nuit, sieste comprise.
@@ -335,9 +447,13 @@ export function buildView(
   if (climateAt && climateOn && climateAction && climateAction !== "none") {
     const heating = climateIds.some((id) => hass.states[id]?.state === "heat");
     const key: StringKey =
-      climateAction === "off" ? "climate_off_in"
-      : climateAction === "eco" ? "climate_eco_in"
-      : heating ? "climate_setback_heat_in" : "climate_setback_in";
+      climateAction === "off"
+        ? "climate_off_in"
+        : climateAction === "eco"
+          ? "climate_eco_in"
+          : heating
+            ? "climate_setback_heat_in"
+            : "climate_setback_in";
     scheduled.push({ at: climateAt, text: (d) => t(key, { t: d }) });
   }
   scheduled.sort((x, y) => x.at.getTime() - y.at.getTime());
@@ -357,37 +473,66 @@ export function buildView(
     const timed = manual.filter((g) => !g.morning && g.until);
     if (timed.length) {
       const until = timed.map((g) => g.until!).sort((x, y) => x.getTime() - y.getTime())[0];
-      notes.push(t("manual", { what: joinWords(timed.map((g) => g.word), t("w_and")), h: clock(until) }));
+      notes.push(
+        t("manual", {
+          what: joinWords(
+            timed.map((g) => g.word),
+            t("w_and"),
+          ),
+          h: clock(until),
+        }),
+      );
     }
     if (!occupied && scheduled.length) {
       notes.push(scheduled[0].text(countdown(scheduled[0].at)));
       ticking = true;
     }
     if (presumed && !occupied && (hasFans || hasClimate)) notes.push(t("note_presumed"));
-    else if (a.sleep_source === "lights_off" && a.bedtime_gesture === "until_vacant") notes.push(t("note_sleep_until_vacant"));
-    else if (a.sleep_source === "entity" && a.sleep_entity) notes.push(t("note_sleep_entity", { name: friendly(hass, a.sleep_entity) }));
+    else if (a.sleep_source === "lights_off" && a.bedtime_gesture === "until_vacant")
+      notes.push(t("note_sleep_until_vacant"));
+    else if (a.sleep_source === "entity" && a.sleep_entity)
+      notes.push(t("note_sleep_entity", { name: friendly(hass, a.sleep_entity) }));
   } else if (manual.length) {
     // Les groupes à durée réglée d'abord, avec leur échéance la plus proche,
     // puis ceux qui tiennent jusqu'au matin.
     const timed = manual.filter((g) => !g.morning);
     const morning = manual.filter((g) => g.morning);
-    const earliest = (list: typeof manual) => list
-      .map((g) => g.until)
-      .filter((d): d is Date => d !== null)
-      .sort((x, y) => x.getTime() - y.getTime())[0];
+    const earliest = (list: typeof manual) =>
+      list
+        .map((g) => g.until)
+        .filter((d): d is Date => d !== null)
+        .sort((x, y) => x.getTime() - y.getTime())[0];
     const until = earliest(timed.length ? timed : morning);
     const and = t("w_and");
     const h = until ? clock(until) : "…";
     line = {
       text: !timed.length
-        ? t(wake ? "manual_wake" : "manual_morning", { what: joinWords(morning.map((g) => g.word), and), h })
+        ? t(wake ? "manual_wake" : "manual_morning", {
+            what: joinWords(
+              morning.map((g) => g.word),
+              and,
+            ),
+            h,
+          })
         : morning.length
           ? t(wake ? "manual_mixed_wake" : "manual_mixed", {
-              what: joinWords(timed.map((g) => g.word), and),
+              what: joinWords(
+                timed.map((g) => g.word),
+                and,
+              ),
               h,
-              rest: joinWords(morning.map((g) => g.word), and).toLowerCase(),
+              rest: joinWords(
+                morning.map((g) => g.word),
+                and,
+              ).toLowerCase(),
             })
-          : t("manual", { what: joinWords(timed.map((g) => g.word), and), h }),
+          : t("manual", {
+              what: joinWords(
+                timed.map((g) => g.word),
+                and,
+              ),
+              h,
+            }),
       icon: "hand",
       tone: "manual",
       action: room.resume ? { kind: "resume", label: t("resume") } : undefined,
@@ -428,9 +573,11 @@ export function buildView(
     if (fansPaused) notes.push(t("note_fans_paused"));
     if (climatePaused) notes.push(t("note_climate_paused"));
   }
-  const applied: string | null = hasClimate && !occupied ? a.climate_vacant_applied ?? null : null;
+  const applied: string | null = hasClimate && !occupied ? (a.climate_vacant_applied ?? null) : null;
   if (applied === "off" || applied === "eco" || applied === "setback") {
-    notes.push(t(applied === "off" ? "note_climate_off" : applied === "eco" ? "note_climate_eco" : "note_climate_setback"));
+    notes.push(
+      t(applied === "off" ? "note_climate_off" : applied === "eco" ? "note_climate_eco" : "note_climate_setback"),
+    );
   }
   if (hasLights && a.daylight_locked) notes.push(t(a.illuminance_sensor ? "note_daylight" : "note_sun_up"));
   if (hasLights && a.lights_held && !lightsPaused) {
@@ -451,9 +598,40 @@ export function buildView(
   // Un groupe que Lumina ne gère plus (automatisme en pause) n'a pas de panneau,
   // ni un groupe masqué dans la configuration de la carte
   const shown = (kind: PaneKind) => !config.hide_panes?.includes(kind);
-  if (hasLights && !lightsPaused && shown("lights")) panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), mode, language, pending.lights));
-  if (hasFans && !fansPaused && shown("fans")) panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), mode, language, pending.fans));
-  if (hasClimate && !climatePaused && shown("climate")) panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), mode, language, pending.climate));
+  if (hasLights && !lightsPaused && shown("lights"))
+    panes.push(
+      lightsPane(
+        hass,
+        room,
+        a,
+        t,
+        lightsIds,
+        lightsAuto,
+        manualHint(lightsManualUntil, "lights"),
+        mode,
+        language,
+        pending.lights,
+      ),
+    );
+  if (hasFans && !fansPaused && shown("fans"))
+    panes.push(
+      fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), mode, language, pending.fans),
+    );
+  if (hasClimate && !climatePaused && shown("climate"))
+    panes.push(
+      climatePane(
+        hass,
+        room,
+        a,
+        t,
+        climateIds,
+        climateAuto,
+        manualHint(climateManualUntil, "climate"),
+        mode,
+        language,
+        pending.climate,
+      ),
+    );
 
   return {
     status: "ok",
@@ -477,7 +655,12 @@ export function buildView(
  * 0.12, n'éteint plus rien.
  */
 function deadSensorsNote(
-  hass: Hass, a: Record<string, any>, occupied: boolean, t: Translate, language: string, now: Date,
+  hass: Hass,
+  a: RoomStateAttributes,
+  occupied: boolean,
+  t: Translate,
+  language: string,
+  now: Date,
 ): string | null {
   const sensors: string[] = a.presence_sensors ?? [];
   const dead = sensors.filter((e) => {
@@ -491,7 +674,13 @@ function deadSensorsNote(
     .sort((x, y) => x.getTime() - y.getTime());
   const since = changes.length ? formatSince(changes[0], now, language, t) : "";
   if (dead.length < sensors.length) {
-    return t("note_sensor_dead", { name: joinWords(dead.map((e) => friendly(hass, e)), t("w_and")), since });
+    return t("note_sensor_dead", {
+      name: joinWords(
+        dead.map((e) => friendly(hass, e)),
+        t("w_and"),
+      ),
+      since,
+    });
   }
   const plural = sensors.length > 1;
   if (occupied) return t(plural ? "note_sensors_unavailable" : "note_sensor_unavailable", { since });
@@ -507,13 +696,14 @@ function formatSince(date: Date, now: Date, language: string, t: Translate): str
 
 /** « lumière, ventilateur et clim », avec une majuscule initiale. */
 function joinWords(words: string[], and: string): string {
-  const text = words.length > 1 ? `${words.slice(0, -1).join(", ")} ${and} ${words[words.length - 1]}` : words[0] ?? "";
+  const text =
+    words.length > 1 ? `${words.slice(0, -1).join(", ")} ${and} ${words[words.length - 1]}` : (words[0] ?? "");
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** L'échéance tombe-t-elle à l'heure de fin de nuit ? (contrôle manuel « jusqu'au matin ») */
 function isNightEnd(hass: Hass, nightEnd: string | undefined, until: Date): boolean {
-  const [h, m] = (nightEnd ? hass.states[nightEnd]?.state ?? "" : "").split(":").map(Number);
+  const [h, m] = (nightEnd ? (hass.states[nightEnd]?.state ?? "") : "").split(":").map(Number);
   return Number.isFinite(h) && Number.isFinite(m) && until.getHours() === h && until.getMinutes() === m;
 }
 
@@ -547,8 +737,15 @@ function lightDimmable(state: HassEntity | undefined): boolean {
 }
 
 function lightsPane(
-  hass: Hass, room: RoomEntities, a: Record<string, any>, t: Translate, ids: string[],
-  auto: AutoState, manualHint: string, { night, sleeping }: PaneMode, language: string,
+  hass: Hass,
+  room: RoomEntities,
+  a: RoomStateAttributes,
+  t: Translate,
+  ids: string[],
+  auto: AutoState,
+  manualHint: string,
+  { night, sleeping }: PaneMode,
+  language: string,
   pending: number | undefined,
 ): Pane {
   const states = ids.map((id) => hass.states[id]);
@@ -563,12 +760,13 @@ function lightsPane(
   }
 
   let value = on ? (level !== null ? `${level} %` : t("on")) : t("off");
-  if (ids.length > 1 && on && pending === undefined) value += ` · ${t("of_total", { n: onStates.length, total: ids.length })}`;
+  if (ids.length > 1 && on && pending === undefined)
+    value += ` · ${t("of_total", { n: onStates.length, total: ids.length })}`;
 
   // Teinte moyenne des lampes allumées en blanc, à la centaine de kelvins
   const kelvins = onStates
     .filter((s) => s?.attributes.color_mode === "color_temp" && typeof s.attributes.color_temp_kelvin === "number")
-    .map((s) => s!.attributes.color_temp_kelvin as number);
+    .map((s) => s.attributes.color_temp_kelvin as number);
   const detail = kelvins.length
     ? `${formatNumber(Math.round(kelvins.reduce((x, y) => x + y, 0) / kelvins.length / 100) * 100, language)} K`
     : undefined;
@@ -577,40 +775,59 @@ function lightsPane(
   if (auto === "paused") hint = t("hint_paused");
   else if (auto === "manual") hint = manualHint;
   else if (on) {
-    const delay = num(hass, night ? room.night_light_off_delay ?? room.light_off_delay : room.light_off_delay);
+    const delay = num(hass, night ? (room.night_light_off_delay ?? room.light_off_delay) : room.light_off_delay);
     hint = delay !== null ? t("hint_lights_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
   } else if (a.lights_held) {
     const held = parseDate(a.wake_hold_until);
     hint = held ? t("hint_lights_held_until", { h: formatClock(held, language) }) : t("hint_lights_held");
-  }
-  else if (sleeping) {
+  } else if (sleeping) {
     const nightLight = num(hass, room.sleep_brightness);
-    hint = nightLight ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) }) : t("hint_no_sleep_light");
+    hint = nightLight
+      ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) })
+      : t("hint_no_sleep_light");
   } else if (a.daylight_locked) hint = t(a.illuminance_sensor ? "hint_daylight" : "hint_sun_up");
   else if (night && num(hass, room.night_brightness) === 0) hint = t("hint_no_night");
   else {
     const threshold = num(hass, room.lux_threshold);
     // Sans capteur de luminosité, Lumina 0.14 suit le soleil.
-    hint = a.illuminance_sensor && threshold !== null
-      ? t("hint_lights_below", { v: formatNumber(threshold, language) })
-      : !a.illuminance_sensor && hass.states["sun.sun"]?.state === "above_horizon"
-        ? sunsetHint(num(hass, room.sunset_advance), t)
-        : t("hint_lights_auto");
+    hint =
+      a.illuminance_sensor && threshold !== null
+        ? t("hint_lights_below", { v: formatNumber(threshold, language) })
+        : !a.illuminance_sensor && hass.states["sun.sun"]?.state === "above_horizon"
+          ? sunsetHint(num(hass, room.sunset_advance), t)
+          : t("hint_lights_auto");
   }
 
-  return { kind: "lights", title: t("lights"), entities: ids, on, level, step: 1, value, detail, hint, auto, autoEntity: room.auto_lights };
+  return {
+    kind: "lights",
+    title: t("lights"),
+    entities: ids,
+    on,
+    level,
+    step: 1,
+    value,
+    detail,
+    hint,
+    auto,
+    autoEntity: room.auto_lights,
+  };
 }
 
 /** Sans capteur de luminosité, en journée : allumage avant le coucher du soleil (Lumina 0.15). */
 function sunsetHint(advance: number | null, t: Translate): string {
-  return advance
-    ? t("hint_lights_before_sunset", { d: formatDelay(advance * 60, t) })
-    : t("hint_lights_after_sunset");
+  return advance ? t("hint_lights_before_sunset", { d: formatDelay(advance * 60, t) }) : t("hint_lights_after_sunset");
 }
 
 function fansPane(
-  hass: Hass, room: RoomEntities, a: Record<string, any>, t: Translate, ids: string[],
-  auto: AutoState, manualHint: string, { night, presumed }: PaneMode, language: string,
+  hass: Hass,
+  room: RoomEntities,
+  a: RoomStateAttributes,
+  t: Translate,
+  ids: string[],
+  auto: AutoState,
+  manualHint: string,
+  { night, presumed }: PaneMode,
+  language: string,
   pending: number | undefined,
 ): Pane {
   const states = ids.map((id) => hass.states[id]);
@@ -629,7 +846,10 @@ function fansPane(
   const value = on ? (level !== null && level > 0 ? `${level} %` : t("fan_on")) : t("fan_off");
 
   let hint: string;
-  const threshold = num(hass, night ? room.night_temperature_threshold ?? room.temperature_threshold : room.temperature_threshold);
+  const threshold = num(
+    hass,
+    night ? (room.night_temperature_threshold ?? room.temperature_threshold) : room.temperature_threshold,
+  );
   if (auto === "paused") hint = t("hint_paused_fans");
   else if (auto === "manual") hint = manualHint;
   else if (a.climate_running && a.fans_with_climate === "mix") {
@@ -644,25 +864,45 @@ function fansPane(
       });
     } else if (presumed) hint = t("hint_fans_until_wake");
     else {
-      const delay = num(hass, night ? room.night_fan_off_delay ?? room.fan_off_delay : room.fan_off_delay);
+      const delay = num(hass, night ? (room.night_fan_off_delay ?? room.fan_off_delay) : room.fan_off_delay);
       hint = delay !== null ? t("hint_fans_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
     }
   } else if (a.temperature_sensor) {
-    hint = threshold === null
-      ? t("hint_fans_presence")
-      : t(a.humidity_sensor ? "hint_fans_at_apparent" : "hint_fans_at", { v: formatNumber(threshold, language, 1) });
+    hint =
+      threshold === null
+        ? t("hint_fans_presence")
+        : t(a.humidity_sensor ? "hint_fans_at_apparent" : "hint_fans_at", { v: formatNumber(threshold, language, 1) });
   } else hint = t("hint_fans_presence");
 
   // Un tour toutes les 2,4 s à basse vitesse, 0,45 s à pleine vitesse
   const spin = on ? 2.4 - ((level ?? 60) / 100) * 1.95 : undefined;
 
   const step = Math.max(1, Number(states.find((s) => s?.attributes.percentage_step)?.attributes.percentage_step ?? 1));
-  return { kind: "fans", title: t("fans"), entities: ids, on, level, step, value, hint, auto, autoEntity: room.auto_fans, spin };
+  return {
+    kind: "fans",
+    title: t("fans"),
+    entities: ids,
+    on,
+    level,
+    step,
+    value,
+    hint,
+    auto,
+    autoEntity: room.auto_fans,
+    spin,
+  };
 }
 
 function climatePane(
-  hass: Hass, room: RoomEntities, a: Record<string, any>, t: Translate, ids: string[],
-  auto: AutoState, manualHint: string, { night, presumed }: PaneMode, language: string,
+  hass: Hass,
+  room: RoomEntities,
+  a: RoomStateAttributes,
+  t: Translate,
+  ids: string[],
+  auto: AutoState,
+  manualHint: string,
+  { night, presumed }: PaneMode,
+  language: string,
   pending: number | undefined,
 ): Pane {
   const states = ids.map((id) => hass.states[id]).filter((s): s is HassEntity => !!s);
@@ -674,7 +914,12 @@ function climatePane(
   let value = t("off");
   if (on) {
     const hvac: Record<string, StringKey> = {
-      cool: "hvac_cool", heat: "hvac_heat", heat_cool: "hvac_auto", auto: "hvac_auto", dry: "hvac_dry", fan_only: "hvac_fan_only",
+      cool: "hvac_cool",
+      heat: "hvac_heat",
+      heat_cool: "hvac_auto",
+      auto: "hvac_auto",
+      dry: "hvac_dry",
+      fan_only: "hvac_fan_only",
     };
     value = main.attributes.preset_mode === "eco" ? t("preset_eco") : hvac[mode] ? t(hvac[mode]) : t("on");
     if (ids.length > 1) value += ` · ${t("of_total", { n: active.length, total: ids.length })}`;
@@ -713,35 +958,63 @@ function climatePane(
   else if (delay === null) hint = t("hint_auto_on");
   else {
     const key: StringKey =
-      action === "off" ? "hint_climate_off_after" : action === "eco" ? "hint_climate_eco_after" : "hint_climate_setback_after";
+      action === "off"
+        ? "hint_climate_off_after"
+        : action === "eco"
+          ? "hint_climate_eco_after"
+          : "hint_climate_setback_after";
     hint = t(key, { d: formatDelay(delay, t) });
   }
 
   return {
-    kind: "climate", title: t("climate"), entities: ids, on, level: null, step: 1, value, hint, auto,
-    autoEntity: room.auto_climate, mode, setpoint,
+    kind: "climate",
+    title: t("climate"),
+    entities: ids,
+    on,
+    level: null,
+    step: 1,
+    value,
+    hint,
+    auto,
+    autoEntity: room.auto_climate,
+    mode,
+    setpoint,
   };
 }
 
-function ambient(hass: Hass, room: RoomEntities, a: Record<string, any>, t: Translate, language: string): AmbientItem[] {
+function ambient(
+  hass: Hass,
+  room: RoomEntities,
+  a: RoomStateAttributes,
+  t: Translate,
+  language: string,
+): AmbientItem[] {
   const items: AmbientItem[] = [];
   const measured = num(hass, a.temperature_sensor);
   const apparent = num(hass, room.apparent_temperature);
-  if (apparent !== null) {
+  if (apparent !== null && room.apparent_temperature) {
     items.push({
       icon: "thermometer",
-      entity: room.apparent_temperature!,
+      entity: room.apparent_temperature,
       value: `${formatNumber(apparent, language, 1)} °C`,
       detail: t("apparent"),
       title: measured !== null ? t("measured", { v: formatNumber(measured, language, 1) }) : undefined,
     });
-  } else if (measured !== null) {
-    items.push({ icon: "thermometer", entity: a.temperature_sensor, value: `${formatNumber(measured, language, 1)} °C` });
+  } else if (measured !== null && a.temperature_sensor) {
+    items.push({
+      icon: "thermometer",
+      entity: a.temperature_sensor,
+      value: `${formatNumber(measured, language, 1)} °C`,
+    });
   }
   const humidity = num(hass, a.humidity_sensor);
-  if (humidity !== null) items.push({ icon: "water", entity: a.humidity_sensor, value: `${formatNumber(humidity, language)} %` });
+  if (humidity !== null && a.humidity_sensor) {
+    items.push({ icon: "water", entity: a.humidity_sensor, value: `${formatNumber(humidity, language)} %` });
+  }
   const lux = num(hass, a.illuminance_sensor);
-  if (lux !== null) items.push({ icon: "brightness", entity: a.illuminance_sensor, value: `${formatNumber(lux, language)} lx` });
+  if (lux !== null && a.illuminance_sensor) {
+    items.push({ icon: "brightness", entity: a.illuminance_sensor, value: `${formatNumber(lux, language)} lx` });
+  }
   return items;
 }
 
@@ -770,21 +1043,31 @@ export interface SettingTab {
 
 const ALL_ANY: Record<string, StringKey> = { all: "o_all", any: "o_any" };
 const CLIMATE_ACTIONS: Record<string, StringKey> = {
-  off: "o_climate_off", eco: "o_climate_eco", setback: "o_climate_setback", none: "o_climate_none",
+  off: "o_climate_off",
+  eco: "o_climate_eco",
+  setback: "o_climate_setback",
+  none: "o_climate_none",
 };
 const FANS_WITH_CLIMATE: Record<string, StringKey> = { normal: "o_fans_normal", mix: "o_fans_mix", off: "o_fans_off" };
 const BEDTIME: Record<string, StringKey> = {
-  override: "o_bedtime_override", until_vacant: "o_bedtime_until_vacant", until_wake: "o_bedtime_until_wake",
+  override: "o_bedtime_override",
+  until_vacant: "o_bedtime_until_vacant",
+  until_wake: "o_bedtime_until_wake",
 };
 const BEDTIME_HELP: Record<string, StringKey> = {
-  override: "h_bedtime_override", until_vacant: "h_bedtime_until_vacant", until_wake: "h_bedtime_until_wake",
+  override: "h_bedtime_override",
+  until_vacant: "h_bedtime_until_vacant",
+  until_wake: "h_bedtime_until_wake",
 };
 
 type RowSpec = [LuminaKey, SettingKind, StringKey, StringKey?, Record<string, StringKey>?, Record<string, StringKey>?];
 
 const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowSpec[] }[] = [
   {
-    id: "lights", label: "tab_lights", icon: "lightbulb", rows: [
+    id: "lights",
+    label: "tab_lights",
+    icon: "lightbulb",
+    rows: [
       ["auto_lights", "switch", "s_auto"],
       ["lux_threshold", "number", "s_lux_threshold"],
       ["day_brightness", "number", "s_day_brightness"],
@@ -805,7 +1088,10 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
     ],
   },
   {
-    id: "fans", label: "tab_fans", icon: "fan", rows: [
+    id: "fans",
+    label: "tab_fans",
+    icon: "fan",
+    rows: [
       ["auto_fans", "switch", "s_auto"],
       ["temperature_threshold", "number", "s_temperature_threshold"],
       ["night_temperature_threshold", "number", "s_night_temperature_threshold"],
@@ -817,7 +1103,10 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
     ],
   },
   {
-    id: "climate", label: "tab_climate", icon: "climate", rows: [
+    id: "climate",
+    label: "tab_climate",
+    icon: "climate",
+    rows: [
       ["auto_climate", "switch", "s_auto"],
       ["climate_vacant_day", "select", "s_climate_vacant_day", "h_climate_vacant", CLIMATE_ACTIONS],
       ["climate_vacant_night", "select", "s_climate_vacant_night", "h_climate_vacant_night", CLIMATE_ACTIONS],
@@ -829,7 +1118,10 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
     ],
   },
   {
-    id: "night", label: "tab_night", icon: "moon", rows: [
+    id: "night",
+    label: "tab_night",
+    icon: "moon",
+    rows: [
       ["forced_night", "switch", "s_forced_night", "h_forced_night"],
       ["sleeping", "switch", "s_sleeping", "h_sleeping"],
       // Lumina 0.13
@@ -846,7 +1138,10 @@ const TABS: { id: SettingTab["id"]; label: StringKey; icon: IconName; rows: RowS
     ],
   },
   {
-    id: "presence", label: "tab_presence", icon: "presence", rows: [
+    id: "presence",
+    label: "tab_presence",
+    icon: "presence",
+    rows: [
       ["vacancy_confirmation", "number", "s_vacancy_confirmation", "h_vacancy_confirmation"],
       ["override_duration", "number", "s_override_duration", "h_override_duration"],
     ],
@@ -862,7 +1157,11 @@ export function settingTabs(room: RoomEntities, t: Translate): SettingTab[] {
     rows: tab.rows
       .filter(([key]) => room[key])
       .map(([key, kind, label, help, options, optionHelp]) => ({
-        key, entity: room[key]!, kind, label: t(rowLabel(room, key, label)), help: help ? t(help) : undefined,
+        key,
+        entity: room[key]!,
+        kind,
+        label: t(rowLabel(room, key, label)),
+        help: help ? t(help) : undefined,
         options: options && translateValues(options, t),
         optionHelp: optionHelp && translateValues(optionHelp, t),
       })),

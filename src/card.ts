@@ -25,7 +25,7 @@ const BaseElement: typeof HTMLElement =
   (globalThis as { HTMLElement?: typeof HTMLElement }).HTMLElement ?? (class {} as typeof HTMLElement);
 
 /** Échappe un texte pour l'insérer dans du HTML. */
-function esc(value: unknown): string {
+function esc(value: string | number | null | undefined): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -74,11 +74,6 @@ function formatValue(value: number, step: number, language: string): string {
 }
 
 /**
- * Tout ce qui est affiché sauf les textes de la phrase et des notes, où vivent
- * les comptes à rebours : si cette clé ne change pas d'une seconde à l'autre,
- * il suffit de mettre ces textes à jour.
- */
-/**
  * Sélecteur qui retrouve un élément après un redessin, par ses attributs data-*
  * et son rôle : le focus du clavier ne se perd pas à chaque mise à jour.
  */
@@ -106,6 +101,11 @@ function paneIcon(pane: Pane): IconName {
   return PANE_ICONS[pane.kind][pane.on ? 0 : 1];
 }
 
+/**
+ * Tout ce qui est affiché sauf les textes de la phrase et des notes, où vivent
+ * les comptes à rebours : si cette clé ne change pas d'une seconde à l'autre,
+ * il suffit de mettre ces textes à jour.
+ */
 export function tickKey(view: RoomView): string {
   return JSON.stringify({ ...view, now: { ...view.now, text: "" }, notes: view.notes.length });
 }
@@ -240,7 +240,8 @@ export class LuminaCard extends BaseElement {
 
   private _restoreFocus(selector: string, action: string | undefined): void {
     let target = this._root.querySelector<HTMLElement>(selector);
-    if (!target && action && FOCUS_FALLBACK[action]) target = this._root.querySelector<HTMLElement>(FOCUS_FALLBACK[action]);
+    if (!target && action && FOCUS_FALLBACK[action])
+      target = this._root.querySelector<HTMLElement>(FOCUS_FALLBACK[action]);
     // Bouton − / + désactivé en butée : le focus reste dans le même réglage
     if (target && (target as HTMLButtonElement).disabled) {
       target = target.parentElement?.querySelector<HTMLElement>("button:not(:disabled)") ?? null;
@@ -254,9 +255,11 @@ export class LuminaCard extends BaseElement {
       <header class="head">
         <div class="name">${esc(view.name)}</div>
         ${view.status === "ok" ? (view.sleeping ? "" : this._renderPeriod(view)) + this._renderSleep(view) : ""}
-        ${hasSettings && view.status === "ok"
-          ? `<button class="icon-btn" data-action="settings" title="${esc(t("settings"))}" aria-label="${esc(t("settings"))}">${svg("cog")}</button>`
-          : ""}
+        ${
+          hasSettings && view.status === "ok"
+            ? `<button class="icon-btn" data-action="settings" title="${esc(t("settings"))}" aria-label="${esc(t("settings"))}">${svg("cog")}</button>`
+            : ""
+        }
       </header>`;
 
     const now = view.now;
@@ -274,9 +277,9 @@ export class LuminaCard extends BaseElement {
     const toggle =
       view.notes.length > 2
         ? `<li class="notes-toggle"><button data-action="notes" aria-expanded="${this._notesOpen}"
-            ${this._notesOpen ? "" : `aria-label="${esc(t("notes_more_label"))}"`}>${
-              esc(this._notesOpen ? t("notes_less") : t("notes_more", { n: view.notes.length - shown.length }))
-            }</button></li>`
+            ${this._notesOpen ? "" : `aria-label="${esc(t("notes_more_label"))}"`}>${esc(
+              this._notesOpen ? t("notes_less") : t("notes_more", { n: view.notes.length - shown.length }),
+            )}</button></li>`
         : "";
     const notes = view.notes.length
       ? `<ul class="notes">${shown.map((n) => `<li class="note">${esc(n)}</li>`).join("")}${toggle}</ul>`
@@ -341,10 +344,11 @@ export class LuminaCard extends BaseElement {
   private _renderChip(pane: Pane, t: ReturnType<typeof translator>): string {
     const value = pane.value;
     const setpoint = pane.setpoint ? this._renderSetpoint(pane.setpoint, t) : "";
-    const manual = pane.auto === "manual" && pane.autoEntity
-      ? `<button class="chip-manual" data-action="auto" data-kind="${pane.kind}" title="${esc(`${pane.hint}. ${t("tap_resume")}`)}"
+    const manual =
+      pane.auto === "manual" && pane.autoEntity
+        ? `<button class="chip-manual" data-action="auto" data-kind="${pane.kind}" title="${esc(`${pane.hint}. ${t("tap_resume")}`)}"
           aria-label="${esc(`${pane.title} : ${t("pill_manual")}. ${t("tap_resume")}`)}">${svg("hand")}</button>`
-      : "";
+        : "";
     const style = `--level:${pane.level ?? (pane.on ? 100 : 0)};${pane.spin ? `--spin:${pane.spin.toFixed(2)}s;` : ""}`;
     return `
       <section class="pane chip pane-${pane.kind} ${pane.on ? "on" : ""}" ${pane.mode ? `data-mode="${esc(pane.mode)}"` : ""} style="${style}">
@@ -568,14 +572,17 @@ export class LuminaCard extends BaseElement {
     const entityId = pane.autoEntity!;
     if (!(await this._call("switch", "turn_off", { entity_id: entityId }))) return;
     const t = translator(languageOf(this._hass!));
-    const message = t(pane.kind === "lights" ? "note_lights_paused" : pane.kind === "fans" ? "note_fans_paused" : "note_climate_paused");
-    this._notify(message, { text: t("undo"), action: () => this._call("switch", "turn_on", { entity_id: entityId }) });
+    const message = t(
+      pane.kind === "lights" ? "note_lights_paused" : pane.kind === "fans" ? "note_fans_paused" : "note_climate_paused",
+    );
+    this._notify(message, {
+      text: t("undo"),
+      action: () => void this._call("switch", "turn_on", { entity_id: entityId }),
+    });
   }
 
   private _moreInfo(entityId: string): void {
-    this.dispatchEvent(
-      new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }),
-    );
+    this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
   }
 
   private _pane(kind: string | undefined): Pane | undefined {
@@ -611,45 +618,45 @@ export class LuminaCard extends BaseElement {
         break;
       case "period":
         if (room.forced_night) {
-          this._call("switch", this._view.forcedNight ? "turn_off" : "turn_on", { entity_id: room.forced_night });
+          void this._call("switch", this._view.forcedNight ? "turn_off" : "turn_on", { entity_id: room.forced_night });
         }
         break;
       case "resume":
-        if (room.resume) this._call("button", "press", { entity_id: room.resume });
+        if (room.resume) void this._call("button", "press", { entity_id: room.resume });
         break;
       case "sleep":
       case "wake":
         if (room.sleeping) {
           const asleep = this._hass!.states[room.sleeping]?.state === "on";
-          this._call("switch", action === "wake" || asleep ? "turn_off" : "turn_on", { entity_id: room.sleeping });
+          void this._call("switch", action === "wake" || asleep ? "turn_off" : "turn_on", { entity_id: room.sleeping });
         }
         break;
       case "enable": {
         const ids = [room.auto_lights, room.auto_fans, room.auto_climate].filter(
           (id): id is string => !!id && this._hass!.states[id]?.state === "off",
         );
-        if (ids.length) this._call("switch", "turn_on", { entity_id: ids });
+        if (ids.length) void this._call("switch", "turn_on", { entity_id: ids });
         break;
       }
       case "auto": {
         const pane = this._pane(kind);
         if (!pane?.autoEntity) break;
-        if (pane.auto === "manual" && room.resume) this._call("button", "press", { entity_id: room.resume });
-        else if (pane.auto === "paused") this._call("switch", "turn_on", { entity_id: pane.autoEntity });
-        else this._pause(pane);
+        if (pane.auto === "manual" && room.resume) void this._call("button", "press", { entity_id: room.resume });
+        else if (pane.auto === "paused") void this._call("switch", "turn_on", { entity_id: pane.autoEntity });
+        else void this._pause(pane);
         break;
       }
       case "toggle": {
         const pane = this._pane(kind);
         if (!pane) break;
-        this._call("homeassistant", pane.on ? "turn_off" : "turn_on", { entity_id: pane.entities });
+        void this._call("homeassistant", pane.on ? "turn_off" : "turn_on", { entity_id: pane.entities });
         break;
       }
       case "switch":
-        if (entity) this._call("switch", "toggle", { entity_id: entity });
+        if (entity) void this._call("switch", "toggle", { entity_id: entity });
         break;
       case "select":
-        if (entity) this._call("select", "select_option", { entity_id: entity, option: target.dataset.option });
+        if (entity) void this._call("select", "select_option", { entity_id: entity, option: target.dataset.option });
         break;
       case "step":
         if (entity) this._step(entity, Number(target.dataset.dir));
@@ -663,7 +670,7 @@ export class LuminaCard extends BaseElement {
   private _onChange(event: Event): void {
     const target = event.target as HTMLInputElement;
     if (target.dataset.action !== "time" || !target.dataset.entity || !target.value) return;
-    this._call("time", "set_value", { entity_id: target.dataset.entity, time: `${target.value}:00` });
+    void this._call("time", "set_value", { entity_id: target.dataset.entity, time: `${target.value}:00` });
     target.blur();
   }
 
@@ -680,9 +687,10 @@ export class LuminaCard extends BaseElement {
     const increment =
       unit === "s" || unit === "min" ? durationStep(current, step, min, max, unit) : smartStep(current, step, min, max);
     // Arrondi au multiple de l'incrément, pour rester sur des valeurs rondes
-    let next = direction > 0
-      ? Math.floor(current / increment + 1e-9) * increment + increment
-      : Math.ceil(current / increment - 1e-9) * increment - increment;
+    let next =
+      direction > 0
+        ? Math.floor(current / increment + 1e-9) * increment + increment
+        : Math.ceil(current / increment - 1e-9) * increment - increment;
     next = Math.min(max, Math.max(min, Number(next.toFixed(6))));
     this._numbers.set(entityId, next);
     this._draw();
@@ -785,7 +793,14 @@ export class LuminaCard extends BaseElement {
     const step = pane?.step ?? 1;
     const small = Math.max(5, step);
     const big = Math.max(20, step);
-    const delta = { ArrowRight: small, ArrowUp: small, ArrowLeft: -small, ArrowDown: -small, PageUp: big, PageDown: -big }[event.key];
+    const delta = {
+      ArrowRight: small,
+      ArrowUp: small,
+      ArrowLeft: -small,
+      ArrowDown: -small,
+      PageUp: big,
+      PageDown: -big,
+    }[event.key];
     let value: number | undefined;
     if (delta !== undefined) value = snap(Math.min(100, Math.max(0, current + delta)), step);
     else if (event.key === "Home") value = 0;
@@ -802,11 +817,15 @@ export class LuminaCard extends BaseElement {
     const tabs = [...this._root.querySelectorAll<HTMLElement>('[role="tab"]')];
     const index = tabs.indexOf(tab);
     const next =
-      event.key === "ArrowRight" ? tabs[(index + 1) % tabs.length]
-      : event.key === "ArrowLeft" ? tabs[(index - 1 + tabs.length) % tabs.length]
-      : event.key === "Home" ? tabs[0]
-      : event.key === "End" ? tabs[tabs.length - 1]
-      : undefined;
+      event.key === "ArrowRight"
+        ? tabs[(index + 1) % tabs.length]
+        : event.key === "ArrowLeft"
+          ? tabs[(index - 1 + tabs.length) % tabs.length]
+          : event.key === "Home"
+            ? tabs[0]
+            : event.key === "End"
+              ? tabs[tabs.length - 1]
+              : undefined;
     if (!next) return;
     event.preventDefault();
     this._tab = next.dataset.tab as SettingTab["id"];
@@ -824,16 +843,16 @@ export class LuminaCard extends BaseElement {
     if (kind === "lights") {
       const lights = pane.entities.filter((e) => e.startsWith("light."));
       const others = pane.entities.filter((e) => !e.startsWith("light."));
-      if (value === 0) this._call("homeassistant", "turn_off", { entity_id: pane.entities });
+      if (value === 0) void this._call("homeassistant", "turn_off", { entity_id: pane.entities });
       else {
-        if (lights.length) this._call("light", "turn_on", { entity_id: lights, brightness_pct: value });
-        if (others.length) this._call("homeassistant", "turn_on", { entity_id: others });
+        if (lights.length) void this._call("light", "turn_on", { entity_id: lights, brightness_pct: value });
+        if (others.length) void this._call("homeassistant", "turn_on", { entity_id: others });
       }
     } else {
       const fans = pane.entities.filter((e) => e.startsWith("fan."));
       const others = pane.entities.filter((e) => !e.startsWith("fan."));
-      if (fans.length) this._call("fan", "set_percentage", { entity_id: fans, percentage: value });
-      if (others.length) this._call("homeassistant", value === 0 ? "turn_off" : "turn_on", { entity_id: others });
+      if (fans.length) void this._call("fan", "set_percentage", { entity_id: fans, percentage: value });
+      if (others.length) void this._call("homeassistant", value === 0 ? "turn_off" : "turn_on", { entity_id: others });
     }
 
     window.clearTimeout(this._pendingTimers[kind]);

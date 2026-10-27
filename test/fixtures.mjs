@@ -74,9 +74,16 @@ export function makeHass({ room = {}, states = {}, language = "fr", calls = [], 
     : {};
   const sleepRoom = sleep
     ? {
-        sleeping: false, sleeping_until: null, sleep_source: null, sleep_presence_seen: false,
-        presumed_occupied: false, sleep_entity: null, bedtime_gesture: "until_vacant", lights_held: false,
-        overrides_until_wake: [], overrides_until_morning: [],
+        sleeping: false,
+        sleeping_until: null,
+        sleep_source: null,
+        sleep_presence_seen: false,
+        presumed_occupied: false,
+        sleep_entity: null,
+        bedtime_gesture: "until_vacant",
+        lights_held: false,
+        overrides_until_wake: [],
+        overrides_until_morning: [],
       }
     : {};
   const climateStates = climate
@@ -91,8 +98,14 @@ export function makeHass({ room = {}, states = {}, language = "fr", calls = [], 
         "climate.chambre": {
           state: "cool",
           attributes: {
-            temperature: 24, current_temperature: 26.5, min_temp: 16, max_temp: 30, target_temp_step: 0.5,
-            hvac_modes: ["off", "cool", "heat", "dry", "fan_only"], preset_mode: "none", preset_modes: ["none", "eco"],
+            temperature: 24,
+            current_temperature: 26.5,
+            min_temp: 16,
+            max_temp: 30,
+            target_temp_step: 0.5,
+            hvac_modes: ["off", "cool", "heat", "dry", "fan_only"],
+            preset_mode: "none",
+            preset_modes: ["none", "eco"],
             friendly_name: "Clim chambre",
           },
         },
