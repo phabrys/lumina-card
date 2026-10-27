@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1 — 2026-10-27
+
+- Aucun changement visible : code vérifié par ESLint (typescript-eslint) et mis en forme par Prettier, attributs de Lumina typés, calcul de l'affichage découpé en fonctions plus courtes.
+
 ## 0.10.0 — 2026-10-26
 
 - Réglages, onglet Clim : **Consigne en soirée** (Lumina 0.16). La clim part en froid à cette consigne à ton arrivée en soirée, et s'arrête à ton départ (0 = jamais).
