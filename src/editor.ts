@@ -2,20 +2,11 @@
 // Utilise le formulaire natif de Home Assistant (ha-form) quand il est
 // disponible, sinon une liste simple des pièces Lumina.
 
-import type { StringKey } from "./i18n.js";
+import { BaseElement, esc } from "./dom.js";
+import type { StringKey, Translate } from "./i18n.js";
 import { languageOf, luminaDevices, translator, type CardConfig, type Hass } from "./model.js";
 
-const EditorBase: typeof HTMLElement =
-  (globalThis as { HTMLElement?: typeof HTMLElement }).HTMLElement ?? (class {} as typeof HTMLElement);
-
-function escAttr(value: string | null | undefined): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;");
-}
-
-export class LuminaCardEditor extends EditorBase {
+export class LuminaCardEditor extends BaseElement {
   private _config: CardConfig = { type: "custom:lumina-card" };
   private _hass?: Hass;
   private _form?: HTMLElement & Record<string, unknown>;
@@ -30,7 +21,7 @@ export class LuminaCardEditor extends EditorBase {
     this._render();
   }
 
-  private _schema(t: ReturnType<typeof translator>) {
+  private _schema(t: Translate) {
     return [
       { name: "device", required: true, selector: { device: { filter: { integration: "lumina" } } } },
       { name: "name", selector: { text: {} } },
@@ -71,18 +62,18 @@ export class LuminaCardEditor extends EditorBase {
     }
 
     // Repli sans ha-form
-    const devices = luminaDevices(this._hass);
-    const options = devices
+    const hass = this._hass;
+    const options = luminaDevices(hass)
       .map((id) => {
-        const device = this._hass!.devices?.[id];
-        const area = device?.area_id ? this._hass!.areas?.[device.area_id]?.name : undefined;
+        const device = hass.devices?.[id];
+        const area = device?.area_id ? hass.areas?.[device.area_id]?.name : undefined;
         const label = area ?? device?.name_by_user ?? device?.name ?? id;
-        return `<option value="${escAttr(id)}" ${id === this._config.device ? "selected" : ""}>${escAttr(label)}</option>`;
+        return `<option value="${esc(id)}" ${id === this._config.device ? "selected" : ""}>${esc(label)}</option>`;
       })
       .join("");
     this.innerHTML = `
       <label style="display:flex;flex-direction:column;gap:4px;font:inherit">
-        ${escAttr(t("e_device"))}
+        ${esc(t("e_device"))}
         <select data-field="device"><option value=""></option>${options}</select>
       </label>`;
     this.querySelector("select")?.addEventListener("change", (event) => {

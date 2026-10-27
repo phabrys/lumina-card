@@ -15,7 +15,7 @@ execFileSync(existsSync(localTsc) ? localTsc : "tsc", ["-p", join(root, "tsconfi
 });
 
 // 2. Assemblage dans l'ordre des dépendances
-const ORDER = ["icons", "i18n", "model", "styles", "card", "editor", "index"];
+const ORDER = ["icons", "i18n", "model", "styles", "dom", "card", "editor", "index"];
 const IMPORT = /^import\s[\s\S]*?\sfrom\s+["']\.\/[^"']+["'];?[ \t]*$/gm;
 const EXPORT_LIST = /^export\s*\{[^}]*\};?[ \t]*$/gm;
 const EXPORT_DECL = /^export\s+(?=(?:const|let|var|function|async\s+function|class)\b)/gm;

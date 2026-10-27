@@ -350,6 +350,55 @@ export function languageOf(hass: Hass): string {
   return hass.locale?.language ?? hass.language ?? "fr";
 }
 
+/** Ce que les parties de l'affichage d'une pièce partagent. */
+interface ViewContext {
+  hass: Hass;
+  room: RoomEntities;
+  /** Attributs du capteur d'état de la pièce. */
+  a: RoomStateAttributes;
+  t: Translate;
+  language: string;
+  now: Date;
+  night: boolean;
+  /** Réglages de nuit : la nuit, ou en sommeil (sieste comprise). */
+  nightRules: boolean;
+  sleeping: boolean;
+  occupied: boolean;
+  /** Ventilateurs et clim ne s'arrêtent pas : un dormeur peut échapper au détecteur. */
+  presumed: boolean;
+  /** Contrôles manuels « jusqu'au réveil » (Lumina 0.10) plutôt que « jusqu'au matin ». */
+  wake: boolean;
+  clock: (date: Date) => string;
+  countdown: (date: Date) => string;
+}
+
+/** Groupe d'appareils présent dans la pièce : lumières, ventilateurs ou clims. */
+interface GroupState {
+  kind: PaneKind;
+  ids: string[];
+  auto: AutoState;
+  /** Fin du contrôle manuel, s'il y en a un. */
+  until: Date | null;
+  /** Nom du groupe dans une phrase (« lumière »). */
+  word: string;
+  /** Contrôle manuel tenu jusqu'au réveil (ou jusqu'au matin). */
+  morning: boolean;
+}
+
+/** Échéance en pièce vide (extinction, action sur la clim) et sa phrase. */
+interface Scheduled {
+  at: Date;
+  text: (countdown: string) => string;
+}
+
+/** Phrase principale de la carte et notes qui l'accompagnent. */
+interface NowState {
+  line: NowLine;
+  notes: string[];
+  /** Vrai si un compte à rebours est affiché. */
+  ticking: boolean;
+}
+
 /**
  * Calcule l'affichage d'une pièce. `now` est passé explicitement pour que les
  * comptes à rebours soient testables.
@@ -380,273 +429,309 @@ export function buildView(hass: Hass, config: CardConfig, now: Date, pending: Pe
     return { ...empty, status: "unavailable", now: { text: t("unavailable"), icon: "alert", tone: "alert" } };
   }
 
+  const ctx = viewContext(hass, room, roomState, t, language, now);
+  const groups = groupStates(ctx);
+  const { line, notes, ticking } = nowState(ctx, groups, vacantSchedule(ctx));
+  // Un détecteur muet passe devant tout : la pièce ne peut plus être suivie correctement.
+  const sensorNote = deadSensorsNote(ctx);
+
+  return {
+    status: "ok",
+    name,
+    night: ctx.night,
+    evening: ctx.a.period === "evening",
+    forcedNight: isOn(hass, room.forced_night),
+    sleeping: ctx.sleeping,
+    now: line,
+    notes: [...(sensorNote ? [sensorNote] : []), ...notes, ...secondaryNotes(ctx, groups, line)],
+    panes: buildPanes(ctx, groups, config, pending),
+    ambient: config.hide_ambient ? [] : ambient(ctx),
+    ticking,
+    entities: room,
+  };
+}
+
+function viewContext(
+  hass: Hass,
+  room: RoomEntities,
+  roomState: HassEntity,
+  t: Translate,
+  language: string,
+  now: Date,
+): ViewContext {
   const a: RoomStateAttributes = roomState.attributes;
   const night = a.period === "night";
-  const evening = a.period === "evening";
   // En sommeil, Lumina applique les réglages de nuit, sieste comprise.
   const sleeping = a.sleeping === true;
-  const nightRules = night || sleeping;
-  // « En sommeil » et « Contrôle manuel » ne disent pas si la pièce est occupée.
-  const occupied = typeof a.occupied === "boolean" ? a.occupied : roomState.state !== "vacant";
-  // Ventilateurs et clim ne s'arrêtent pas : un dormeur peut échapper au détecteur.
-  const presumed = sleeping && a.presumed_occupied === true;
-  const sleepingUntil = parseDate(a.sleeping_until);
-  const lightsIds: string[] = a.lights ?? [];
-  const fansIds: string[] = a.fans ?? [];
-  const climateIds: string[] = a.climates ?? [];
-  const lightsAuto = autoState(hass, room.auto_lights, a.lights_override_until);
-  const fansAuto = autoState(hass, room.auto_fans, a.fans_override_until);
-  const climateAuto = autoState(hass, room.auto_climate, a.climate_override_until);
-  const clock = (d: Date) => formatClock(d, language);
-  const countdown = (d: Date) => formatCountdown(d.getTime() - now.getTime());
+  return {
+    hass,
+    room,
+    a,
+    t,
+    language,
+    now,
+    night,
+    nightRules: night || sleeping,
+    sleeping,
+    // « En sommeil » et « Contrôle manuel » ne disent pas si la pièce est occupée.
+    occupied: typeof a.occupied === "boolean" ? a.occupied : roomState.state !== "vacant",
+    presumed: sleeping && a.presumed_occupied === true,
+    wake: Array.isArray(a.overrides_until_wake),
+    clock: (date) => formatClock(date, language),
+    countdown: (date) => formatCountdown(date.getTime() - now.getTime()),
+  };
+}
 
-  const lightsOffAt = parseDate(a.lights_off_at);
-  const fansOffAt = parseDate(a.fans_off_at);
-  const vacancyAt = parseDate(a.vacancy_at);
-  const lightsManualUntil = parseDate(a.lights_override_until);
-  const fansManualUntil = parseDate(a.fans_override_until);
-  const climateManualUntil = parseDate(a.climate_override_until);
-  const climateAt = parseDate(a.climate_vacant_at);
-  const forcedUntil = room.forced_night ? parseDate(hass.states[room.forced_night]?.attributes.until) : null;
-  const forcedNight = isOn(hass, room.forced_night);
-
-  const notes: string[] = [];
-  let ticking = false;
-  let line: NowLine;
-
-  const hasLights = lightsIds.length > 0;
-  const hasFans = fansIds.length > 0;
-  const hasClimate = climateIds.length > 0;
-  const lightsPaused = hasLights && lightsAuto === "paused";
-  const fansPaused = hasFans && fansAuto === "paused";
-  const climatePaused = hasClimate && climateAuto === "paused";
+/** Groupes présents dans la pièce, avec leur automatisme et leur contrôle manuel. */
+function groupStates(ctx: ViewContext): GroupState[] {
+  const { hass, room, a, t, night, wake } = ctx;
   // Contrôles manuels « jusqu'au réveil » (Lumina 0.10), « jusqu'au matin »
   // publiés depuis 0.9.2, déduits de l'heure de fin de nuit avant.
-  const wake = Array.isArray(a.overrides_until_wake);
-  const morningKinds: unknown = wake ? a.overrides_until_wake : a.overrides_until_morning;
-  const untilMorning = (kind: string, until: Date | null): boolean =>
+  const morningKinds = wake ? a.overrides_until_wake : a.overrides_until_morning;
+  const untilMorning = (kind: PaneKind, until: Date | null): boolean =>
     Array.isArray(morningKinds)
       ? morningKinds.includes(kind)
       : night && isOn(hass, room.night_override_until_morning) && !!until && isNightEnd(hass, room.night_end, until);
-  const groups = [
-    { kind: "lights", has: hasLights, auto: lightsAuto, until: lightsManualUntil, word: t("w_lights") },
-    { kind: "fans", has: hasFans, auto: fansAuto, until: fansManualUntil, word: t("w_fans") },
-    { kind: "climate", has: hasClimate, auto: climateAuto, until: climateManualUntil, word: t("w_climate") },
-  ]
-    .filter((g) => g.has)
-    .map((g) => ({ ...g, morning: g.auto === "manual" && untilMorning(g.kind, g.until) }));
-  const manual = groups.filter((g) => g.auto === "manual");
-  const morningOf = (kind: string) => groups.some((g) => g.kind === kind && g.morning);
-  const climateOn = climateIds.some((id) => isClimateOn(hass.states[id]));
+  const specs: { kind: PaneKind; ids?: string[]; autoEntity?: string; overrideUntil?: string | null; word: string }[] =
+    [
+      {
+        kind: "lights",
+        ids: a.lights,
+        autoEntity: room.auto_lights,
+        overrideUntil: a.lights_override_until,
+        word: t("w_lights"),
+      },
+      {
+        kind: "fans",
+        ids: a.fans,
+        autoEntity: room.auto_fans,
+        overrideUntil: a.fans_override_until,
+        word: t("w_fans"),
+      },
+      {
+        kind: "climate",
+        ids: a.climates,
+        autoEntity: room.auto_climate,
+        overrideUntil: a.climate_override_until,
+        word: t("w_climate"),
+      },
+    ];
+  return specs
+    .filter((spec) => spec.ids?.length)
+    .map(({ kind, ids, autoEntity, overrideUntil, word }) => {
+      const auto = autoState(hass, autoEntity, overrideUntil);
+      const until = parseDate(overrideUntil);
+      return { kind, ids: ids ?? [], auto, until, word, morning: auto === "manual" && untilMorning(kind, until) };
+    });
+}
 
-  // Échéances en pièce vide : extinctions, puis action sur la clim
-  const scheduled: { at: Date; text: (t: string) => string }[] = [];
+/** Échéances en pièce vide, de la plus proche à la plus lointaine : extinctions, puis action sur la clim. */
+function vacantSchedule(ctx: ViewContext): Scheduled[] {
+  const { hass, a, t } = ctx;
+  const scheduled: Scheduled[] = [];
+  const lightsOffAt = parseDate(a.lights_off_at);
+  const fansOffAt = parseDate(a.fans_off_at);
+  const climateAt = parseDate(a.climate_vacant_at);
   if (lightsOffAt) scheduled.push({ at: lightsOffAt, text: (d) => t("lights_off_in", { t: d }) });
   if (fansOffAt) scheduled.push({ at: fansOffAt, text: (d) => t("fans_off_in", { t: d }) });
-  const climateAction: string | undefined = a.climate_vacant_action;
-  if (climateAt && climateOn && climateAction && climateAction !== "none") {
+  const climateIds = a.climates ?? [];
+  const climateOn = climateIds.some((id) => isClimateOn(hass.states[id]));
+  const action = a.climate_vacant_action;
+  if (climateAt && climateOn && action && action !== "none") {
     const heating = climateIds.some((id) => hass.states[id]?.state === "heat");
     const key: StringKey =
-      climateAction === "off"
+      action === "off"
         ? "climate_off_in"
-        : climateAction === "eco"
+        : action === "eco"
           ? "climate_eco_in"
           : heating
             ? "climate_setback_heat_in"
             : "climate_setback_in";
     scheduled.push({ at: climateAt, text: (d) => t(key, { t: d }) });
   }
-  scheduled.sort((x, y) => x.at.getTime() - y.at.getTime());
+  return scheduled.sort((x, y) => x.at.getTime() - y.at.getTime());
+}
+
+/** Phrase principale : la situation la plus importante de la pièce, avec ses notes. */
+function nowState(ctx: ViewContext, groups: GroupState[], scheduled: Scheduled[]): NowState {
+  const { hass, a, t, night, occupied, countdown } = ctx;
+  const lightsOffAt = parseDate(a.lights_off_at);
+  const vacancyAt = parseDate(a.vacancy_at);
+  const manual = groups.filter((g) => g.auto === "manual");
 
   if (a.lights_warning && lightsOffAt) {
-    line = { text: t("warning", { t: countdown(lightsOffAt) }), icon: "timer", tone: "countdown" };
-    notes.push(t("note_warning"));
-    ticking = true;
-  } else if (sleeping) {
-    line = {
-      text: sleepingUntil ? t("sleeping", { h: clock(sleepingUntil) }) : t("sleeping_plain"),
-      icon: "sleep",
-      tone: "night",
-      action: room.sleeping ? { kind: "wake", label: t("wake") } : undefined,
+    return {
+      line: { text: t("warning", { t: countdown(lightsOffAt) }), icon: "timer", tone: "countdown" },
+      notes: [t("note_warning")],
+      ticking: true,
     };
-    // Une lampe allumée à la main garde la durée réglée, puis s'éteint.
-    const timed = manual.filter((g) => !g.morning && g.until);
-    if (timed.length) {
-      const until = timed.map((g) => g.until!).sort((x, y) => x.getTime() - y.getTime())[0];
-      notes.push(
-        t("manual", {
-          what: joinWords(
-            timed.map((g) => g.word),
-            t("w_and"),
-          ),
-          h: clock(until),
-        }),
-      );
-    }
-    if (!occupied && scheduled.length) {
-      notes.push(scheduled[0].text(countdown(scheduled[0].at)));
-      ticking = true;
-    }
-    if (presumed && !occupied && (hasFans || hasClimate)) notes.push(t("note_presumed"));
-    else if (a.sleep_source === "lights_off" && a.bedtime_gesture === "until_vacant")
-      notes.push(t("note_sleep_until_vacant"));
-    else if (a.sleep_source === "entity" && a.sleep_entity)
-      notes.push(t("note_sleep_entity", { name: friendly(hass, a.sleep_entity) }));
-  } else if (manual.length) {
-    // Les groupes à durée réglée d'abord, avec leur échéance la plus proche,
-    // puis ceux qui tiennent jusqu'au matin.
-    const timed = manual.filter((g) => !g.morning);
-    const morning = manual.filter((g) => g.morning);
-    const earliest = (list: typeof manual) =>
-      list
-        .map((g) => g.until)
-        .filter((d): d is Date => d !== null)
-        .sort((x, y) => x.getTime() - y.getTime())[0];
-    const until = earliest(timed.length ? timed : morning);
-    const and = t("w_and");
-    const h = until ? clock(until) : "…";
-    line = {
-      text: !timed.length
-        ? t(wake ? "manual_wake" : "manual_morning", {
-            what: joinWords(
-              morning.map((g) => g.word),
-              and,
-            ),
-            h,
-          })
-        : morning.length
-          ? t(wake ? "manual_mixed_wake" : "manual_mixed", {
-              what: joinWords(
-                timed.map((g) => g.word),
-                and,
-              ),
-              h,
-              rest: joinWords(
-                morning.map((g) => g.word),
-                and,
-              ).toLowerCase(),
-            })
-          : t("manual", {
-              what: joinWords(
-                timed.map((g) => g.word),
-                and,
-              ),
-              h,
-            }),
-      icon: "hand",
-      tone: "manual",
-      action: room.resume ? { kind: "resume", label: t("resume") } : undefined,
+  }
+  if (ctx.sleeping) return sleepState(ctx, manual, scheduled);
+  if (manual.length) return { line: manualLine(ctx, manual), notes: [], ticking: false };
+  if (a.vacancy_pending && vacancyAt) {
+    return {
+      line: { text: t("vacancy", { t: countdown(vacancyAt) }), icon: "timerOutline", tone: "countdown" },
+      notes: [],
+      ticking: true,
     };
-  } else if (a.vacancy_pending && vacancyAt) {
-    line = { text: t("vacancy", { t: countdown(vacancyAt) }), icon: "timerOutline", tone: "countdown" };
-    ticking = true;
-  } else if (!occupied && scheduled.length) {
+  }
+  if (!occupied && scheduled.length) {
     const [first, ...rest] = scheduled;
-    line = { text: first.text(countdown(first.at)), icon: "timerOutline", tone: "countdown" };
-    for (const next of rest) notes.push(next.text(countdown(next.at)));
-    ticking = true;
-  } else if (groups.length && groups.every((g) => g.auto === "paused")) {
-    line = { text: t("paused"), icon: "pause", tone: "calm", action: { kind: "enable", label: t("enable") } };
-  } else if (occupied && a.presence_hold_active && !(a.presence_sensors ?? []).some((e: string) => isOn(hass, e))) {
-    const holder = (a.presence_hold_entities ?? []).find((e: string) => {
+    return {
+      line: { text: first.text(countdown(first.at)), icon: "timerOutline", tone: "countdown" },
+      notes: rest.map((next) => next.text(countdown(next.at))),
+      ticking: true,
+    };
+  }
+  if (groups.length && groups.every((g) => g.auto === "paused")) {
+    return {
+      line: { text: t("paused"), icon: "pause", tone: "calm", action: { kind: "enable", label: t("enable") } },
+      notes: [],
+      ticking: false,
+    };
+  }
+  // Pièce gardée occupée par une entité de maintien (TV…), sans détecteur actif
+  if (occupied && a.presence_hold_active && !(a.presence_sensors ?? []).some((e) => isOn(hass, e))) {
+    const holder = (a.presence_hold_entities ?? []).find((e) => {
       const state = hass.states[e];
       return state && !HOLD_INACTIVE.has(state.state);
     });
-    line = { text: t("hold", { name: holder ? friendly(hass, holder) : "…" }), icon: "tv", tone: "occupied" };
-  } else if (occupied) {
-    line = night
+    return {
+      line: { text: t("hold", { name: holder ? friendly(hass, holder) : "…" }), icon: "tv", tone: "occupied" },
+      notes: [],
+      ticking: false,
+    };
+  }
+  const line: NowLine = occupied
+    ? night
       ? { text: t("occupied_night"), icon: "moon", tone: "night" }
-      : { text: t("occupied"), icon: "account", tone: "occupied" };
-  } else {
-    line = night
+      : { text: t("occupied"), icon: "account", tone: "occupied" }
+    : night
       ? { text: t("vacant_night"), icon: "moon", tone: "night" }
       : { text: t("vacant"), icon: "home", tone: "calm" };
-  }
+  return { line, notes: [], ticking: false };
+}
 
-  // Notes secondaires, par ordre d'importance. Un détecteur muet passe
-  // devant tout : la pièce ne peut plus être suivie correctement.
-  const sensorNote = deadSensorsNote(hass, a, occupied, t, language, now);
-  if (sensorNote) notes.unshift(sensorNote);
-  if (forcedNight) notes.push(t("note_forced_night", { h: forcedUntil ? clock(forcedUntil) : "…" }));
+/** En sommeil : jusqu'à quand, lampes allumées à la main, prochaine extinction, dormeur présumé. */
+function sleepState(ctx: ViewContext, manual: GroupState[], scheduled: Scheduled[]): NowState {
+  const { hass, room, a, t, occupied, presumed, clock, countdown } = ctx;
+  const sleepingUntil = parseDate(a.sleeping_until);
+  const line: NowLine = {
+    text: sleepingUntil ? t("sleeping", { h: clock(sleepingUntil) }) : t("sleeping_plain"),
+    icon: "sleep",
+    tone: "night",
+    action: room.sleeping ? { kind: "wake", label: t("wake") } : undefined,
+  };
+  const notes: string[] = [];
+  let ticking = false;
+  // Une lampe allumée à la main garde la durée réglée, puis s'éteint.
+  const timed = manual.filter((g) => !g.morning);
+  const until = earliest(timed.map((g) => g.until));
+  if (until) notes.push(t("manual", { what: groupWords(timed, t), h: clock(until) }));
+  if (!occupied && scheduled.length) {
+    notes.push(scheduled[0].text(countdown(scheduled[0].at)));
+    ticking = true;
+  }
+  const hasFansOrClimate = !!(a.fans?.length || a.climates?.length);
+  if (presumed && !occupied && hasFansOrClimate) notes.push(t("note_presumed"));
+  else if (a.sleep_source === "lights_off" && a.bedtime_gesture === "until_vacant") {
+    notes.push(t("note_sleep_until_vacant"));
+  } else if (a.sleep_source === "entity" && a.sleep_entity) {
+    notes.push(t("note_sleep_entity", { name: friendly(hass, a.sleep_entity) }));
+  }
+  return { line, notes, ticking };
+}
+
+/**
+ * Contrôle manuel : les groupes à durée réglée d'abord, avec leur échéance la
+ * plus proche, puis ceux qui tiennent jusqu'au matin (ou au réveil).
+ */
+function manualLine(ctx: ViewContext, manual: GroupState[]): NowLine {
+  const { room, t, wake, clock } = ctx;
+  const timed = manual.filter((g) => !g.morning);
+  const morning = manual.filter((g) => g.morning);
+  const until = earliest((timed.length ? timed : morning).map((g) => g.until));
+  const h = until ? clock(until) : "…";
+  let text: string;
+  if (!timed.length) {
+    text = t(wake ? "manual_wake" : "manual_morning", { what: groupWords(morning, t), h });
+  } else if (morning.length) {
+    text = t(wake ? "manual_mixed_wake" : "manual_mixed", {
+      what: groupWords(timed, t),
+      h,
+      rest: groupWords(morning, t).toLowerCase(),
+    });
+  } else {
+    text = t("manual", { what: groupWords(timed, t), h });
+  }
+  return {
+    text,
+    icon: "hand",
+    tone: "manual",
+    action: room.resume ? { kind: "resume", label: t("resume") } : undefined,
+  };
+}
+
+/** Notes secondaires, par ordre d'importance, après celles de la phrase principale. */
+function secondaryNotes(ctx: ViewContext, groups: GroupState[], line: NowLine): string[] {
+  const { hass, room, a, t, night, sleeping, occupied, clock } = ctx;
+  const has = (kind: PaneKind) => groups.some((g) => g.kind === kind);
+  const paused = (kind: PaneKind) => groups.some((g) => g.kind === kind && g.auto === "paused");
+  const notes: string[] = [];
+  if (room.forced_night && isOn(hass, room.forced_night)) {
+    const until = parseDate(hass.states[room.forced_night]?.attributes.until);
+    notes.push(t("note_forced_night", { h: until ? clock(until) : "…" }));
+  }
+  // La phrase « tout est en pause » le dit déjà
   if (line.action?.kind !== "enable") {
-    if (lightsPaused) notes.push(t("note_lights_paused"));
-    if (fansPaused) notes.push(t("note_fans_paused"));
-    if (climatePaused) notes.push(t("note_climate_paused"));
+    if (paused("lights")) notes.push(t("note_lights_paused"));
+    if (paused("fans")) notes.push(t("note_fans_paused"));
+    if (paused("climate")) notes.push(t("note_climate_paused"));
   }
-  const applied: string | null = hasClimate && !occupied ? (a.climate_vacant_applied ?? null) : null;
-  if (applied === "off" || applied === "eco" || applied === "setback") {
-    notes.push(
-      t(applied === "off" ? "note_climate_off" : applied === "eco" ? "note_climate_eco" : "note_climate_setback"),
-    );
-  }
-  if (hasLights && a.daylight_locked) notes.push(t(a.illuminance_sensor ? "note_daylight" : "note_sun_up"));
-  if (hasLights && a.lights_held && !lightsPaused) {
+  const applied = has("climate") && !occupied ? a.climate_vacant_applied : null;
+  if (applied === "off") notes.push(t("note_climate_off"));
+  else if (applied === "eco") notes.push(t("note_climate_eco"));
+  else if (applied === "setback") notes.push(t("note_climate_setback"));
+  if (has("lights") && a.daylight_locked) notes.push(t(a.illuminance_sensor ? "note_daylight" : "note_sun_up"));
+  if (has("lights") && a.lights_held && !paused("lights")) {
     // Répit du réveil : jusqu'à une heure précise depuis Lumina 0.10.2
     const held = parseDate(a.wake_hold_until);
     notes.push(held ? t("note_lights_held_until", { h: clock(held) }) : t("note_lights_held"));
   }
-  if (hasLights && night && !sleeping && !lightsPaused && num(hass, room.night_brightness) === 0) {
+  if (has("lights") && night && !sleeping && !paused("lights") && num(hass, room.night_brightness) === 0) {
     notes.push(t("note_no_night_light"));
   }
+  return notes;
+}
 
-  const panes: Pane[] = [];
-  const manualHint = (until: Date | null, kind: string) =>
-    morningOf(kind)
-      ? t(wake ? "hint_manual_wake" : "hint_manual_morning")
-      : t("hint_manual", { h: until ? clock(until) : "…" });
-  const mode: PaneMode = { night: nightRules, sleeping, presumed };
-  // Un groupe que Lumina ne gère plus (automatisme en pause) n'a pas de panneau,
-  // ni un groupe masqué dans la configuration de la carte
-  const shown = (kind: PaneKind) => !config.hide_panes?.includes(kind);
-  if (hasLights && !lightsPaused && shown("lights"))
-    panes.push(
-      lightsPane(
-        hass,
-        room,
-        a,
-        t,
-        lightsIds,
-        lightsAuto,
-        manualHint(lightsManualUntil, "lights"),
-        mode,
-        language,
-        pending.lights,
-      ),
-    );
-  if (hasFans && !fansPaused && shown("fans"))
-    panes.push(
-      fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), mode, language, pending.fans),
-    );
-  if (hasClimate && !climatePaused && shown("climate"))
-    panes.push(
-      climatePane(
-        hass,
-        room,
-        a,
-        t,
-        climateIds,
-        climateAuto,
-        manualHint(climateManualUntil, "climate"),
-        mode,
-        language,
-        pending.climate,
-      ),
-    );
+/**
+ * Un panneau par groupe, sauf pour un groupe que Lumina ne gère plus
+ * (automatisme en pause) ou masqué dans la configuration de la carte.
+ */
+function buildPanes(ctx: ViewContext, groups: GroupState[], config: CardConfig, pending: Pending): Pane[] {
+  const { t, wake, clock } = ctx;
+  const builders = { lights: lightsPane, fans: fansPane, climate: climatePane };
+  return groups
+    .filter((g) => g.auto !== "paused" && !config.hide_panes?.includes(g.kind))
+    .map((g) => {
+      const manualHint = g.morning
+        ? t(wake ? "hint_manual_wake" : "hint_manual_morning")
+        : t("hint_manual", { h: g.until ? clock(g.until) : "…" });
+      return builders[g.kind](ctx, g, manualHint, pending[g.kind]);
+    });
+}
 
-  return {
-    status: "ok",
-    name,
-    night,
-    evening,
-    forcedNight,
-    sleeping,
-    now: line,
-    notes,
-    panes,
-    ambient: config.hide_ambient ? [] : ambient(hass, room, a, t, language),
-    ticking,
-    entities: room,
-  };
+/** Date la plus proche, undefined si aucune. */
+function earliest(dates: (Date | null)[]): Date | undefined {
+  return dates.filter((d): d is Date => d !== null).sort((x, y) => x.getTime() - y.getTime())[0];
+}
+
+/** « Lumière et ventilateur » : les groupes nommés dans une phrase. */
+function groupWords(groups: GroupState[], t: Translate): string {
+  return joinWords(
+    groups.map((g) => g.word),
+    t("w_and"),
+  );
 }
 
 /**
@@ -654,14 +739,8 @@ export function buildView(hass: Hass, config: CardConfig, now: Date, pending: Pe
  * Lumina en fait. Tous muets, il garde la pièce occupée ou, depuis Lumina
  * 0.12, n'éteint plus rien.
  */
-function deadSensorsNote(
-  hass: Hass,
-  a: RoomStateAttributes,
-  occupied: boolean,
-  t: Translate,
-  language: string,
-  now: Date,
-): string | null {
+function deadSensorsNote(ctx: ViewContext): string | null {
+  const { hass, a, occupied, t, language, now } = ctx;
   const sensors: string[] = a.presence_sensors ?? [];
   const dead = sensors.filter((e) => {
     const state = hass.states[e];
@@ -717,13 +796,6 @@ function autoState(hass: Hass, autoEntity: string | undefined, overrideUntil: un
   return "auto";
 }
 
-/** Période qui règle les panneaux : nuit (ou sommeil), sommeil, présomption d'occupation. */
-interface PaneMode {
-  night: boolean;
-  sleeping: boolean;
-  presumed: boolean;
-}
-
 function lightLevel(state: HassEntity | undefined): number | null {
   if (!state || state.state !== "on") return null;
   const brightness = state.attributes.brightness;
@@ -736,18 +808,10 @@ function lightDimmable(state: HassEntity | undefined): boolean {
   return modes.some((m) => m !== "onoff");
 }
 
-function lightsPane(
-  hass: Hass,
-  room: RoomEntities,
-  a: RoomStateAttributes,
-  t: Translate,
-  ids: string[],
-  auto: AutoState,
-  manualHint: string,
-  { night, sleeping }: PaneMode,
-  language: string,
-  pending: number | undefined,
-): Pane {
+function lightsPane(ctx: ViewContext, group: GroupState, manualHint: string, pending: number | undefined): Pane {
+  const { hass, room, a, t, language, sleeping } = ctx;
+  const night = ctx.nightRules;
+  const { ids, auto } = group;
   const states = ids.map((id) => hass.states[id]);
   const onStates = states.filter((s) => s?.state === "on");
   const levels = onStates.map(lightLevel).filter((v): v is number => v !== null);
@@ -818,18 +882,10 @@ function sunsetHint(advance: number | null, t: Translate): string {
   return advance ? t("hint_lights_before_sunset", { d: formatDelay(advance * 60, t) }) : t("hint_lights_after_sunset");
 }
 
-function fansPane(
-  hass: Hass,
-  room: RoomEntities,
-  a: RoomStateAttributes,
-  t: Translate,
-  ids: string[],
-  auto: AutoState,
-  manualHint: string,
-  { night, presumed }: PaneMode,
-  language: string,
-  pending: number | undefined,
-): Pane {
+function fansPane(ctx: ViewContext, group: GroupState, manualHint: string, pending: number | undefined): Pane {
+  const { hass, room, a, t, language, presumed } = ctx;
+  const night = ctx.nightRules;
+  const { ids, auto } = group;
   const states = ids.map((id) => hass.states[id]);
   const onStates = states.filter((s) => s?.state === "on");
   const speeds = onStates
@@ -893,18 +949,10 @@ function fansPane(
   };
 }
 
-function climatePane(
-  hass: Hass,
-  room: RoomEntities,
-  a: RoomStateAttributes,
-  t: Translate,
-  ids: string[],
-  auto: AutoState,
-  manualHint: string,
-  { night, presumed }: PaneMode,
-  language: string,
-  pending: number | undefined,
-): Pane {
+function climatePane(ctx: ViewContext, group: GroupState, manualHint: string, pending: number | undefined): Pane {
+  const { hass, room, a, t, language, presumed } = ctx;
+  const night = ctx.nightRules;
+  const { ids, auto } = group;
   const states = ids.map((id) => hass.states[id]).filter((s): s is HassEntity => !!s);
   const active = states.filter(isClimateOn);
   const main = active[0] ?? states[0];
@@ -982,13 +1030,8 @@ function climatePane(
   };
 }
 
-function ambient(
-  hass: Hass,
-  room: RoomEntities,
-  a: RoomStateAttributes,
-  t: Translate,
-  language: string,
-): AmbientItem[] {
+function ambient(ctx: ViewContext): AmbientItem[] {
+  const { hass, room, a, t, language } = ctx;
   const items: AmbientItem[] = [];
   const measured = num(hass, a.temperature_sensor);
   const apparent = num(hass, room.apparent_temperature);

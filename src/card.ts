@@ -2,6 +2,8 @@
 // (quoi montrer, quand) vit dans model.ts ; ce fichier ne fait que dessiner
 // et transmettre les gestes à Home Assistant.
 
+import { BaseElement, esc } from "./dom.js";
+import type { Translate } from "./i18n.js";
 import { ICONS, type IconName } from "./icons.js";
 import {
   buildView,
@@ -11,6 +13,7 @@ import {
   translator,
   type CardConfig,
   type Hass,
+  type HassEntity,
   type Pane,
   type PaneKind,
   type Pending,
@@ -21,17 +24,16 @@ import {
 } from "./model.js";
 import { STYLES } from "./styles.js";
 
-const BaseElement: typeof HTMLElement =
-  (globalThis as { HTMLElement?: typeof HTMLElement }).HTMLElement ?? (class {} as typeof HTMLElement);
-
-/** Échappe un texte pour l'insérer dans du HTML. */
-function esc(value: string | number | null | undefined): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
+/** Pause après un appui sur − / + avant d'envoyer la valeur : les appuis rapides sont regroupés. */
+const SEND_DELAY_MS = 700;
+/** Temps laissé à Home Assistant pour renvoyer l'état d'un réglage envoyé. */
+const NUMBER_ECHO_MS = 1500;
+/** Durée d'affichage de la valeur choisie (curseur, consigne), le temps que l'état suive. */
+const PENDING_HOLD_MS = 2500;
+/** Durée du message qui permet d'annuler une mise en pause. */
+const UNDO_NOTICE_MS = 8000;
+/** Rafraîchissement des comptes à rebours. */
+const TICK_MS = 1000;
 
 function svg(name: IconName): string {
   return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
@@ -186,9 +188,28 @@ export class LuminaCard extends BaseElement {
 
   // --- Rendu ----------------------------------------------------------------
 
+  /** Langue de Home Assistant (français tant que hass n'est pas connu). */
+  private get _language(): string {
+    return this._hass ? languageOf(this._hass) : "fr";
+  }
+
+  /** Textes de la carte dans la langue de Home Assistant. */
+  private get _t(): Translate {
+    return translator(this._language);
+  }
+
+  private _state(entityId: string): HassEntity | undefined {
+    return this._hass?.states[entityId];
+  }
+
+  /** Redessine même si aucun état n'a changé (valeur en attente affichée ou retirée). */
+  private _forceRender(): void {
+    this._signature = [];
+    this._render();
+  }
+
   /** États dont dépend l'affichage : on ne redessine que s'ils changent. */
-  private _computeSignature(view: RoomView): unknown[] {
-    const hass = this._hass!;
+  private _computeSignature(hass: Hass, view: RoomView): unknown[] {
     const ids = new Set<string>(Object.values(view.entities).filter((e): e is string => !!e));
     const roomState = view.entities.room_state ? hass.states[view.entities.room_state] : undefined;
     const a = roomState?.attributes ?? {};
@@ -205,7 +226,7 @@ export class LuminaCard extends BaseElement {
     if (!this._config || !this._hass || !this.isConnected) return;
     if (this._dragging) return; // ne pas casser un glisser en cours
     const view = buildView(this._hass, this._config, new Date(), this._pending);
-    const signature = this._computeSignature(view);
+    const signature = this._computeSignature(this._hass, view);
     const changed =
       force ||
       signature.length !== this._signature.length ||
@@ -218,7 +239,7 @@ export class LuminaCard extends BaseElement {
 
   private _draw(): void {
     const view = this._view!;
-    const t = translator(languageOf(this._hass!));
+    const t = this._t;
     const tabs = settingTabs(view.entities, t);
     const hasSettings = tabs.length > 0 && !this._config!.hide_settings;
     const body =
@@ -250,7 +271,7 @@ export class LuminaCard extends BaseElement {
   }
 
   private _renderMain(view: RoomView, hasSettings: boolean): string {
-    const t = translator(languageOf(this._hass!));
+    const t = this._t;
     const header = `
       <header class="head">
         <div class="name">${esc(view.name)}</div>
@@ -313,7 +334,7 @@ export class LuminaCard extends BaseElement {
   }
 
   private _renderPeriod(view: RoomView): string {
-    const t = translator(languageOf(this._hass!));
+    const t = this._t;
     const forcedEntity = view.entities.forced_night;
     const label = view.night ? t("night") : view.evening ? t("evening") : t("day");
     // Nuit naturelle : rien à basculer. Sinon : forcer ou annuler la nuit.
@@ -329,7 +350,7 @@ export class LuminaCard extends BaseElement {
    * remplace la pastille Jour / Nuit : le sommeil suit déjà les réglages de nuit. */
   private _renderSleep(view: RoomView): string {
     if (!view.entities.sleeping) return "";
-    const t = translator(languageOf(this._hass!));
+    const t = this._t;
     const title = view.sleeping ? t("wake_now") : t("sleep_now");
     return `<button class="period sleep ${view.sleeping ? "sleeping" : ""}" data-action="sleep"
         aria-pressed="${view.sleeping}" title="${esc(title)}" aria-label="${esc(title)}">
@@ -341,7 +362,7 @@ export class LuminaCard extends BaseElement {
    * Panneau réduit (option `compact`) : icône pour allumer ou éteindre, valeur
    * qui ouvre la fiche et, en contrôle manuel, une main pour rendre la main.
    */
-  private _renderChip(pane: Pane, t: ReturnType<typeof translator>): string {
+  private _renderChip(pane: Pane, t: Translate): string {
     const value = pane.value;
     const setpoint = pane.setpoint ? this._renderSetpoint(pane.setpoint, t) : "";
     const manual =
@@ -364,8 +385,8 @@ export class LuminaCard extends BaseElement {
   }
 
   /** Consigne de la clim : − / +, envoyée après une pause (voir _setpoint). */
-  private _renderSetpoint(sp: Setpoint, t: ReturnType<typeof translator>): string {
-    const language = languageOf(this._hass!);
+  private _renderSetpoint(sp: Setpoint, t: Translate): string {
+    const language = this._language;
     return `<div class="stepper setpoint" role="group" aria-label="${esc(t("setpoint"))}">
         <button data-action="setpoint" data-dir="-1" ${sp.value <= sp.min ? "disabled" : ""}
           title="${esc(t("setpoint_down"))}" aria-label="${esc(t("setpoint_down"))}">${svg("minus")}</button>
@@ -377,7 +398,7 @@ export class LuminaCard extends BaseElement {
       </div>`;
   }
 
-  private _renderPane(pane: Pane, t: ReturnType<typeof translator>): string {
+  private _renderPane(pane: Pane, t: Translate): string {
     const icon = paneIcon(pane);
     const pillLabel =
       pane.auto === "auto" ? t("pill_auto") : pane.auto === "manual" ? t("pill_manual") : t("pill_paused");
@@ -416,9 +437,8 @@ export class LuminaCard extends BaseElement {
   }
 
   private _renderSettings(view: RoomView, tabs: SettingTab[]): string {
-    const hass = this._hass!;
-    const language = languageOf(hass);
-    const t = translator(language);
+    const language = this._language;
+    const t = this._t;
     const current = tabs.find((tab) => tab.id === this._tab) ?? tabs[0];
     this._tab = current.id;
 
@@ -443,8 +463,8 @@ export class LuminaCard extends BaseElement {
       </div>`;
   }
 
-  private _renderRow(row: SettingRow, language: string, t: ReturnType<typeof translator>): string {
-    const state = this._hass!.states[row.entity];
+  private _renderRow(row: SettingRow, language: string, t: Translate): string {
+    const state = this._state(row.entity);
     const help = (state && row.optionHelp?.[state.state]) ?? row.help;
     const text = `<div class="row-text"><div class="row-label">${esc(row.label)}</div>${
       help ? `<div class="row-help">${esc(help)}</div>` : ""
@@ -511,7 +531,7 @@ export class LuminaCard extends BaseElement {
       // Les réglages n'affichent aucun compte à rebours
       if (this._dragging || this._settingsOpen) return;
       if (!this._patch(this._view)) this._draw();
-    }, 1000);
+    }, TICK_MS);
   }
 
   /**
@@ -542,11 +562,12 @@ export class LuminaCard extends BaseElement {
 
   /** Appelle un service ; vrai s'il a réussi, sinon l'erreur est affichée. */
   private async _call(domain: string, service: string, data: Record<string, unknown>): Promise<boolean> {
+    if (!this._hass) return false;
     try {
-      await this._hass!.callService(domain, service, data);
+      await this._hass.callService(domain, service, data);
       return true;
     } catch (err) {
-      const t = translator(languageOf(this._hass!));
+      const t = this._t;
       const message = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? err);
       this._notify(t("error", { e: message }));
       return false;
@@ -557,7 +578,7 @@ export class LuminaCard extends BaseElement {
   private _notify(message: string, action?: { text: string; action: () => void }): void {
     this.dispatchEvent(
       new CustomEvent("hass-notification", {
-        detail: action ? { message, action, duration: 8000 } : { message },
+        detail: action ? { message, action, duration: UNDO_NOTICE_MS } : { message },
         bubbles: true,
         composed: true,
       }),
@@ -571,7 +592,7 @@ export class LuminaCard extends BaseElement {
   private async _pause(pane: Pane): Promise<void> {
     const entityId = pane.autoEntity!;
     if (!(await this._call("switch", "turn_off", { entity_id: entityId }))) return;
-    const t = translator(languageOf(this._hass!));
+    const t = this._t;
     const message = t(
       pane.kind === "lights" ? "note_lights_paused" : pane.kind === "fans" ? "note_fans_paused" : "note_climate_paused",
     );
@@ -627,13 +648,13 @@ export class LuminaCard extends BaseElement {
       case "sleep":
       case "wake":
         if (room.sleeping) {
-          const asleep = this._hass!.states[room.sleeping]?.state === "on";
+          const asleep = this._state(room.sleeping)?.state === "on";
           void this._call("switch", action === "wake" || asleep ? "turn_off" : "turn_on", { entity_id: room.sleeping });
         }
         break;
       case "enable": {
         const ids = [room.auto_lights, room.auto_fans, room.auto_climate].filter(
-          (id): id is string => !!id && this._hass!.states[id]?.state === "off",
+          (id): id is string => !!id && this._state(id)?.state === "off",
         );
         if (ids.length) void this._call("switch", "turn_on", { entity_id: ids });
         break;
@@ -676,7 +697,7 @@ export class LuminaCard extends BaseElement {
 
   /** Réglage numérique : valeur affichée tout de suite, envoyée après une pause. */
   private _step(entityId: string, direction: number): void {
-    const state = this._hass!.states[entityId];
+    const state = this._state(entityId);
     if (!state) return;
     const a = state.attributes;
     const step = Number(a.step ?? 1);
@@ -706,11 +727,10 @@ export class LuminaCard extends BaseElement {
         window.setTimeout(() => {
           if (this._numbers.get(entityId) === value) {
             this._numbers.delete(entityId);
-            this._signature = [];
-            this._render();
+            this._forceRender();
           }
-        }, 1500);
-      }, 700),
+        }, NUMBER_ECHO_MS);
+      }, SEND_DELAY_MS),
     );
   }
 
@@ -721,24 +741,19 @@ export class LuminaCard extends BaseElement {
     if (!pane || !sp) return;
     const next = Math.min(sp.max, Math.max(sp.min, Number((sp.value + direction * sp.step).toFixed(2))));
     this._pending.climate = next;
-    this._signature = [];
-    this._render();
+    this._forceRender();
 
     window.clearTimeout(this._setpointTimer);
     window.clearTimeout(this._pendingTimers.climate);
     this._setpointTimer = window.setTimeout(async () => {
       // Seules les clims en marche reçoivent la consigne
       const ids = pane.entities.filter((id) => {
-        const state = this._hass!.states[id]?.state;
+        const state = this._state(id)?.state;
         return state !== undefined && !["off", "unavailable", "unknown"].includes(state);
       });
       if (ids.length) await this._call("climate", "set_temperature", { entity_id: ids, temperature: next });
-      this._pendingTimers.climate = window.setTimeout(() => {
-        delete this._pending.climate;
-        this._signature = [];
-        this._render();
-      }, 2500);
-    }, 700);
+      this._releasePendingLater("climate");
+    }, SEND_DELAY_MS);
   }
 
   // --- Curseurs ---------------------------------------------------------------
@@ -855,13 +870,16 @@ export class LuminaCard extends BaseElement {
       if (others.length) void this._call("homeassistant", value === 0 ? "turn_off" : "turn_on", { entity_id: others });
     }
 
+    this._releasePendingLater(kind);
+    this._forceRender();
+  }
+
+  /** Retire la valeur en attente après PENDING_HOLD_MS, le temps que l'état revienne. */
+  private _releasePendingLater(kind: keyof Pending): void {
     window.clearTimeout(this._pendingTimers[kind]);
     this._pendingTimers[kind] = window.setTimeout(() => {
       delete this._pending[kind];
-      this._signature = [];
-      this._render();
-    }, 2500);
-    this._signature = [];
-    this._render();
+      this._forceRender();
+    }, PENDING_HOLD_MS);
   }
 }

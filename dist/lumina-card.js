@@ -652,239 +652,308 @@ function buildView(hass, config, now, pending = {}) {
     if (!roomState || roomState.state === "unavailable" || roomState.state === "unknown") {
         return { ...empty, status: "unavailable", now: { text: t("unavailable"), icon: "alert", tone: "alert" } };
     }
+    const ctx = viewContext(hass, room, roomState, t, language, now);
+    const groups = groupStates(ctx);
+    const { line, notes, ticking } = nowState(ctx, groups, vacantSchedule(ctx));
+    // Un détecteur muet passe devant tout : la pièce ne peut plus être suivie correctement.
+    const sensorNote = deadSensorsNote(ctx);
+    return {
+        status: "ok",
+        name,
+        night: ctx.night,
+        evening: ctx.a.period === "evening",
+        forcedNight: isOn(hass, room.forced_night),
+        sleeping: ctx.sleeping,
+        now: line,
+        notes: [...(sensorNote ? [sensorNote] : []), ...notes, ...secondaryNotes(ctx, groups, line)],
+        panes: buildPanes(ctx, groups, config, pending),
+        ambient: config.hide_ambient ? [] : ambient(ctx),
+        ticking,
+        entities: room,
+    };
+}
+function viewContext(hass, room, roomState, t, language, now) {
     const a = roomState.attributes;
     const night = a.period === "night";
-    const evening = a.period === "evening";
     // En sommeil, Lumina applique les réglages de nuit, sieste comprise.
     const sleeping = a.sleeping === true;
-    const nightRules = night || sleeping;
-    // « En sommeil » et « Contrôle manuel » ne disent pas si la pièce est occupée.
-    const occupied = typeof a.occupied === "boolean" ? a.occupied : roomState.state !== "vacant";
-    // Ventilateurs et clim ne s'arrêtent pas : un dormeur peut échapper au détecteur.
-    const presumed = sleeping && a.presumed_occupied === true;
-    const sleepingUntil = parseDate(a.sleeping_until);
-    const lightsIds = a.lights ?? [];
-    const fansIds = a.fans ?? [];
-    const climateIds = a.climates ?? [];
-    const lightsAuto = autoState(hass, room.auto_lights, a.lights_override_until);
-    const fansAuto = autoState(hass, room.auto_fans, a.fans_override_until);
-    const climateAuto = autoState(hass, room.auto_climate, a.climate_override_until);
-    const clock = (d) => formatClock(d, language);
-    const countdown = (d) => formatCountdown(d.getTime() - now.getTime());
-    const lightsOffAt = parseDate(a.lights_off_at);
-    const fansOffAt = parseDate(a.fans_off_at);
-    const vacancyAt = parseDate(a.vacancy_at);
-    const lightsManualUntil = parseDate(a.lights_override_until);
-    const fansManualUntil = parseDate(a.fans_override_until);
-    const climateManualUntil = parseDate(a.climate_override_until);
-    const climateAt = parseDate(a.climate_vacant_at);
-    const forcedUntil = room.forced_night ? parseDate(hass.states[room.forced_night]?.attributes.until) : null;
-    const forcedNight = isOn(hass, room.forced_night);
-    const notes = [];
-    let ticking = false;
-    let line;
-    const hasLights = lightsIds.length > 0;
-    const hasFans = fansIds.length > 0;
-    const hasClimate = climateIds.length > 0;
-    const lightsPaused = hasLights && lightsAuto === "paused";
-    const fansPaused = hasFans && fansAuto === "paused";
-    const climatePaused = hasClimate && climateAuto === "paused";
+    return {
+        hass,
+        room,
+        a,
+        t,
+        language,
+        now,
+        night,
+        nightRules: night || sleeping,
+        sleeping,
+        // « En sommeil » et « Contrôle manuel » ne disent pas si la pièce est occupée.
+        occupied: typeof a.occupied === "boolean" ? a.occupied : roomState.state !== "vacant",
+        presumed: sleeping && a.presumed_occupied === true,
+        wake: Array.isArray(a.overrides_until_wake),
+        clock: (date) => formatClock(date, language),
+        countdown: (date) => formatCountdown(date.getTime() - now.getTime()),
+    };
+}
+/** Groupes présents dans la pièce, avec leur automatisme et leur contrôle manuel. */
+function groupStates(ctx) {
+    const { hass, room, a, t, night, wake } = ctx;
     // Contrôles manuels « jusqu'au réveil » (Lumina 0.10), « jusqu'au matin »
     // publiés depuis 0.9.2, déduits de l'heure de fin de nuit avant.
-    const wake = Array.isArray(a.overrides_until_wake);
     const morningKinds = wake ? a.overrides_until_wake : a.overrides_until_morning;
     const untilMorning = (kind, until) => Array.isArray(morningKinds)
         ? morningKinds.includes(kind)
         : night && isOn(hass, room.night_override_until_morning) && !!until && isNightEnd(hass, room.night_end, until);
-    const groups = [
-        { kind: "lights", has: hasLights, auto: lightsAuto, until: lightsManualUntil, word: t("w_lights") },
-        { kind: "fans", has: hasFans, auto: fansAuto, until: fansManualUntil, word: t("w_fans") },
-        { kind: "climate", has: hasClimate, auto: climateAuto, until: climateManualUntil, word: t("w_climate") },
-    ]
-        .filter((g) => g.has)
-        .map((g) => ({ ...g, morning: g.auto === "manual" && untilMorning(g.kind, g.until) }));
-    const manual = groups.filter((g) => g.auto === "manual");
-    const morningOf = (kind) => groups.some((g) => g.kind === kind && g.morning);
-    const climateOn = climateIds.some((id) => isClimateOn(hass.states[id]));
-    // Échéances en pièce vide : extinctions, puis action sur la clim
+    const specs = [
+        {
+            kind: "lights",
+            ids: a.lights,
+            autoEntity: room.auto_lights,
+            overrideUntil: a.lights_override_until,
+            word: t("w_lights"),
+        },
+        {
+            kind: "fans",
+            ids: a.fans,
+            autoEntity: room.auto_fans,
+            overrideUntil: a.fans_override_until,
+            word: t("w_fans"),
+        },
+        {
+            kind: "climate",
+            ids: a.climates,
+            autoEntity: room.auto_climate,
+            overrideUntil: a.climate_override_until,
+            word: t("w_climate"),
+        },
+    ];
+    return specs
+        .filter((spec) => spec.ids?.length)
+        .map(({ kind, ids, autoEntity, overrideUntil, word }) => {
+        const auto = autoState(hass, autoEntity, overrideUntil);
+        const until = parseDate(overrideUntil);
+        return { kind, ids: ids ?? [], auto, until, word, morning: auto === "manual" && untilMorning(kind, until) };
+    });
+}
+/** Échéances en pièce vide, de la plus proche à la plus lointaine : extinctions, puis action sur la clim. */
+function vacantSchedule(ctx) {
+    const { hass, a, t } = ctx;
     const scheduled = [];
+    const lightsOffAt = parseDate(a.lights_off_at);
+    const fansOffAt = parseDate(a.fans_off_at);
+    const climateAt = parseDate(a.climate_vacant_at);
     if (lightsOffAt)
         scheduled.push({ at: lightsOffAt, text: (d) => t("lights_off_in", { t: d }) });
     if (fansOffAt)
         scheduled.push({ at: fansOffAt, text: (d) => t("fans_off_in", { t: d }) });
-    const climateAction = a.climate_vacant_action;
-    if (climateAt && climateOn && climateAction && climateAction !== "none") {
+    const climateIds = a.climates ?? [];
+    const climateOn = climateIds.some((id) => isClimateOn(hass.states[id]));
+    const action = a.climate_vacant_action;
+    if (climateAt && climateOn && action && action !== "none") {
         const heating = climateIds.some((id) => hass.states[id]?.state === "heat");
-        const key = climateAction === "off"
+        const key = action === "off"
             ? "climate_off_in"
-            : climateAction === "eco"
+            : action === "eco"
                 ? "climate_eco_in"
                 : heating
                     ? "climate_setback_heat_in"
                     : "climate_setback_in";
         scheduled.push({ at: climateAt, text: (d) => t(key, { t: d }) });
     }
-    scheduled.sort((x, y) => x.at.getTime() - y.at.getTime());
+    return scheduled.sort((x, y) => x.at.getTime() - y.at.getTime());
+}
+/** Phrase principale : la situation la plus importante de la pièce, avec ses notes. */
+function nowState(ctx, groups, scheduled) {
+    const { hass, a, t, night, occupied, countdown } = ctx;
+    const lightsOffAt = parseDate(a.lights_off_at);
+    const vacancyAt = parseDate(a.vacancy_at);
+    const manual = groups.filter((g) => g.auto === "manual");
     if (a.lights_warning && lightsOffAt) {
-        line = { text: t("warning", { t: countdown(lightsOffAt) }), icon: "timer", tone: "countdown" };
-        notes.push(t("note_warning"));
-        ticking = true;
-    }
-    else if (sleeping) {
-        line = {
-            text: sleepingUntil ? t("sleeping", { h: clock(sleepingUntil) }) : t("sleeping_plain"),
-            icon: "sleep",
-            tone: "night",
-            action: room.sleeping ? { kind: "wake", label: t("wake") } : undefined,
-        };
-        // Une lampe allumée à la main garde la durée réglée, puis s'éteint.
-        const timed = manual.filter((g) => !g.morning && g.until);
-        if (timed.length) {
-            const until = timed.map((g) => g.until).sort((x, y) => x.getTime() - y.getTime())[0];
-            notes.push(t("manual", {
-                what: joinWords(timed.map((g) => g.word), t("w_and")),
-                h: clock(until),
-            }));
-        }
-        if (!occupied && scheduled.length) {
-            notes.push(scheduled[0].text(countdown(scheduled[0].at)));
-            ticking = true;
-        }
-        if (presumed && !occupied && (hasFans || hasClimate))
-            notes.push(t("note_presumed"));
-        else if (a.sleep_source === "lights_off" && a.bedtime_gesture === "until_vacant")
-            notes.push(t("note_sleep_until_vacant"));
-        else if (a.sleep_source === "entity" && a.sleep_entity)
-            notes.push(t("note_sleep_entity", { name: friendly(hass, a.sleep_entity) }));
-    }
-    else if (manual.length) {
-        // Les groupes à durée réglée d'abord, avec leur échéance la plus proche,
-        // puis ceux qui tiennent jusqu'au matin.
-        const timed = manual.filter((g) => !g.morning);
-        const morning = manual.filter((g) => g.morning);
-        const earliest = (list) => list
-            .map((g) => g.until)
-            .filter((d) => d !== null)
-            .sort((x, y) => x.getTime() - y.getTime())[0];
-        const until = earliest(timed.length ? timed : morning);
-        const and = t("w_and");
-        const h = until ? clock(until) : "…";
-        line = {
-            text: !timed.length
-                ? t(wake ? "manual_wake" : "manual_morning", {
-                    what: joinWords(morning.map((g) => g.word), and),
-                    h,
-                })
-                : morning.length
-                    ? t(wake ? "manual_mixed_wake" : "manual_mixed", {
-                        what: joinWords(timed.map((g) => g.word), and),
-                        h,
-                        rest: joinWords(morning.map((g) => g.word), and).toLowerCase(),
-                    })
-                    : t("manual", {
-                        what: joinWords(timed.map((g) => g.word), and),
-                        h,
-                    }),
-            icon: "hand",
-            tone: "manual",
-            action: room.resume ? { kind: "resume", label: t("resume") } : undefined,
+        return {
+            line: { text: t("warning", { t: countdown(lightsOffAt) }), icon: "timer", tone: "countdown" },
+            notes: [t("note_warning")],
+            ticking: true,
         };
     }
-    else if (a.vacancy_pending && vacancyAt) {
-        line = { text: t("vacancy", { t: countdown(vacancyAt) }), icon: "timerOutline", tone: "countdown" };
-        ticking = true;
+    if (ctx.sleeping)
+        return sleepState(ctx, manual, scheduled);
+    if (manual.length)
+        return { line: manualLine(ctx, manual), notes: [], ticking: false };
+    if (a.vacancy_pending && vacancyAt) {
+        return {
+            line: { text: t("vacancy", { t: countdown(vacancyAt) }), icon: "timerOutline", tone: "countdown" },
+            notes: [],
+            ticking: true,
+        };
     }
-    else if (!occupied && scheduled.length) {
+    if (!occupied && scheduled.length) {
         const [first, ...rest] = scheduled;
-        line = { text: first.text(countdown(first.at)), icon: "timerOutline", tone: "countdown" };
-        for (const next of rest)
-            notes.push(next.text(countdown(next.at)));
-        ticking = true;
+        return {
+            line: { text: first.text(countdown(first.at)), icon: "timerOutline", tone: "countdown" },
+            notes: rest.map((next) => next.text(countdown(next.at))),
+            ticking: true,
+        };
     }
-    else if (groups.length && groups.every((g) => g.auto === "paused")) {
-        line = { text: t("paused"), icon: "pause", tone: "calm", action: { kind: "enable", label: t("enable") } };
+    if (groups.length && groups.every((g) => g.auto === "paused")) {
+        return {
+            line: { text: t("paused"), icon: "pause", tone: "calm", action: { kind: "enable", label: t("enable") } },
+            notes: [],
+            ticking: false,
+        };
     }
-    else if (occupied && a.presence_hold_active && !(a.presence_sensors ?? []).some((e) => isOn(hass, e))) {
+    // Pièce gardée occupée par une entité de maintien (TV…), sans détecteur actif
+    if (occupied && a.presence_hold_active && !(a.presence_sensors ?? []).some((e) => isOn(hass, e))) {
         const holder = (a.presence_hold_entities ?? []).find((e) => {
             const state = hass.states[e];
             return state && !HOLD_INACTIVE.has(state.state);
         });
-        line = { text: t("hold", { name: holder ? friendly(hass, holder) : "…" }), icon: "tv", tone: "occupied" };
+        return {
+            line: { text: t("hold", { name: holder ? friendly(hass, holder) : "…" }), icon: "tv", tone: "occupied" },
+            notes: [],
+            ticking: false,
+        };
     }
-    else if (occupied) {
-        line = night
+    const line = occupied
+        ? night
             ? { text: t("occupied_night"), icon: "moon", tone: "night" }
-            : { text: t("occupied"), icon: "account", tone: "occupied" };
-    }
-    else {
-        line = night
+            : { text: t("occupied"), icon: "account", tone: "occupied" }
+        : night
             ? { text: t("vacant_night"), icon: "moon", tone: "night" }
             : { text: t("vacant"), icon: "home", tone: "calm" };
+    return { line, notes: [], ticking: false };
+}
+/** En sommeil : jusqu'à quand, lampes allumées à la main, prochaine extinction, dormeur présumé. */
+function sleepState(ctx, manual, scheduled) {
+    const { hass, room, a, t, occupied, presumed, clock, countdown } = ctx;
+    const sleepingUntil = parseDate(a.sleeping_until);
+    const line = {
+        text: sleepingUntil ? t("sleeping", { h: clock(sleepingUntil) }) : t("sleeping_plain"),
+        icon: "sleep",
+        tone: "night",
+        action: room.sleeping ? { kind: "wake", label: t("wake") } : undefined,
+    };
+    const notes = [];
+    let ticking = false;
+    // Une lampe allumée à la main garde la durée réglée, puis s'éteint.
+    const timed = manual.filter((g) => !g.morning);
+    const until = earliest(timed.map((g) => g.until));
+    if (until)
+        notes.push(t("manual", { what: groupWords(timed, t), h: clock(until) }));
+    if (!occupied && scheduled.length) {
+        notes.push(scheduled[0].text(countdown(scheduled[0].at)));
+        ticking = true;
     }
-    // Notes secondaires, par ordre d'importance. Un détecteur muet passe
-    // devant tout : la pièce ne peut plus être suivie correctement.
-    const sensorNote = deadSensorsNote(hass, a, occupied, t, language, now);
-    if (sensorNote)
-        notes.unshift(sensorNote);
-    if (forcedNight)
-        notes.push(t("note_forced_night", { h: forcedUntil ? clock(forcedUntil) : "…" }));
+    const hasFansOrClimate = !!(a.fans?.length || a.climates?.length);
+    if (presumed && !occupied && hasFansOrClimate)
+        notes.push(t("note_presumed"));
+    else if (a.sleep_source === "lights_off" && a.bedtime_gesture === "until_vacant") {
+        notes.push(t("note_sleep_until_vacant"));
+    }
+    else if (a.sleep_source === "entity" && a.sleep_entity) {
+        notes.push(t("note_sleep_entity", { name: friendly(hass, a.sleep_entity) }));
+    }
+    return { line, notes, ticking };
+}
+/**
+ * Contrôle manuel : les groupes à durée réglée d'abord, avec leur échéance la
+ * plus proche, puis ceux qui tiennent jusqu'au matin (ou au réveil).
+ */
+function manualLine(ctx, manual) {
+    const { room, t, wake, clock } = ctx;
+    const timed = manual.filter((g) => !g.morning);
+    const morning = manual.filter((g) => g.morning);
+    const until = earliest((timed.length ? timed : morning).map((g) => g.until));
+    const h = until ? clock(until) : "…";
+    let text;
+    if (!timed.length) {
+        text = t(wake ? "manual_wake" : "manual_morning", { what: groupWords(morning, t), h });
+    }
+    else if (morning.length) {
+        text = t(wake ? "manual_mixed_wake" : "manual_mixed", {
+            what: groupWords(timed, t),
+            h,
+            rest: groupWords(morning, t).toLowerCase(),
+        });
+    }
+    else {
+        text = t("manual", { what: groupWords(timed, t), h });
+    }
+    return {
+        text,
+        icon: "hand",
+        tone: "manual",
+        action: room.resume ? { kind: "resume", label: t("resume") } : undefined,
+    };
+}
+/** Notes secondaires, par ordre d'importance, après celles de la phrase principale. */
+function secondaryNotes(ctx, groups, line) {
+    const { hass, room, a, t, night, sleeping, occupied, clock } = ctx;
+    const has = (kind) => groups.some((g) => g.kind === kind);
+    const paused = (kind) => groups.some((g) => g.kind === kind && g.auto === "paused");
+    const notes = [];
+    if (room.forced_night && isOn(hass, room.forced_night)) {
+        const until = parseDate(hass.states[room.forced_night]?.attributes.until);
+        notes.push(t("note_forced_night", { h: until ? clock(until) : "…" }));
+    }
+    // La phrase « tout est en pause » le dit déjà
     if (line.action?.kind !== "enable") {
-        if (lightsPaused)
+        if (paused("lights"))
             notes.push(t("note_lights_paused"));
-        if (fansPaused)
+        if (paused("fans"))
             notes.push(t("note_fans_paused"));
-        if (climatePaused)
+        if (paused("climate"))
             notes.push(t("note_climate_paused"));
     }
-    const applied = hasClimate && !occupied ? (a.climate_vacant_applied ?? null) : null;
-    if (applied === "off" || applied === "eco" || applied === "setback") {
-        notes.push(t(applied === "off" ? "note_climate_off" : applied === "eco" ? "note_climate_eco" : "note_climate_setback"));
-    }
-    if (hasLights && a.daylight_locked)
+    const applied = has("climate") && !occupied ? a.climate_vacant_applied : null;
+    if (applied === "off")
+        notes.push(t("note_climate_off"));
+    else if (applied === "eco")
+        notes.push(t("note_climate_eco"));
+    else if (applied === "setback")
+        notes.push(t("note_climate_setback"));
+    if (has("lights") && a.daylight_locked)
         notes.push(t(a.illuminance_sensor ? "note_daylight" : "note_sun_up"));
-    if (hasLights && a.lights_held && !lightsPaused) {
+    if (has("lights") && a.lights_held && !paused("lights")) {
         // Répit du réveil : jusqu'à une heure précise depuis Lumina 0.10.2
         const held = parseDate(a.wake_hold_until);
         notes.push(held ? t("note_lights_held_until", { h: clock(held) }) : t("note_lights_held"));
     }
-    if (hasLights && night && !sleeping && !lightsPaused && num(hass, room.night_brightness) === 0) {
+    if (has("lights") && night && !sleeping && !paused("lights") && num(hass, room.night_brightness) === 0) {
         notes.push(t("note_no_night_light"));
     }
-    const panes = [];
-    const manualHint = (until, kind) => morningOf(kind)
-        ? t(wake ? "hint_manual_wake" : "hint_manual_morning")
-        : t("hint_manual", { h: until ? clock(until) : "…" });
-    const mode = { night: nightRules, sleeping, presumed };
-    // Un groupe que Lumina ne gère plus (automatisme en pause) n'a pas de panneau,
-    // ni un groupe masqué dans la configuration de la carte
-    const shown = (kind) => !config.hide_panes?.includes(kind);
-    if (hasLights && !lightsPaused && shown("lights"))
-        panes.push(lightsPane(hass, room, a, t, lightsIds, lightsAuto, manualHint(lightsManualUntil, "lights"), mode, language, pending.lights));
-    if (hasFans && !fansPaused && shown("fans"))
-        panes.push(fansPane(hass, room, a, t, fansIds, fansAuto, manualHint(fansManualUntil, "fans"), mode, language, pending.fans));
-    if (hasClimate && !climatePaused && shown("climate"))
-        panes.push(climatePane(hass, room, a, t, climateIds, climateAuto, manualHint(climateManualUntil, "climate"), mode, language, pending.climate));
-    return {
-        status: "ok",
-        name,
-        night,
-        evening,
-        forcedNight,
-        sleeping,
-        now: line,
-        notes,
-        panes,
-        ambient: config.hide_ambient ? [] : ambient(hass, room, a, t, language),
-        ticking,
-        entities: room,
-    };
+    return notes;
+}
+/**
+ * Un panneau par groupe, sauf pour un groupe que Lumina ne gère plus
+ * (automatisme en pause) ou masqué dans la configuration de la carte.
+ */
+function buildPanes(ctx, groups, config, pending) {
+    const { t, wake, clock } = ctx;
+    const builders = { lights: lightsPane, fans: fansPane, climate: climatePane };
+    return groups
+        .filter((g) => g.auto !== "paused" && !config.hide_panes?.includes(g.kind))
+        .map((g) => {
+        const manualHint = g.morning
+            ? t(wake ? "hint_manual_wake" : "hint_manual_morning")
+            : t("hint_manual", { h: g.until ? clock(g.until) : "…" });
+        return builders[g.kind](ctx, g, manualHint, pending[g.kind]);
+    });
+}
+/** Date la plus proche, undefined si aucune. */
+function earliest(dates) {
+    return dates.filter((d) => d !== null).sort((x, y) => x.getTime() - y.getTime())[0];
+}
+/** « Lumière et ventilateur » : les groupes nommés dans une phrase. */
+function groupWords(groups, t) {
+    return joinWords(groups.map((g) => g.word), t("w_and"));
 }
 /**
  * Détecteurs de présence muets (piles, connexion) : depuis quand, et ce que
  * Lumina en fait. Tous muets, il garde la pièce occupée ou, depuis Lumina
  * 0.12, n'éteint plus rien.
  */
-function deadSensorsNote(hass, a, occupied, t, language, now) {
+function deadSensorsNote(ctx) {
+    const { hass, a, occupied, t, language, now } = ctx;
     const sensors = a.presence_sensors ?? [];
     const dead = sensors.filter((e) => {
         const state = hass.states[e];
@@ -948,7 +1017,10 @@ function lightDimmable(state) {
     const modes = state.attributes.supported_color_modes ?? [];
     return modes.some((m) => m !== "onoff");
 }
-function lightsPane(hass, room, a, t, ids, auto, manualHint, { night, sleeping }, language, pending) {
+function lightsPane(ctx, group, manualHint, pending) {
+    const { hass, room, a, t, language, sleeping } = ctx;
+    const night = ctx.nightRules;
+    const { ids, auto } = group;
     const states = ids.map((id) => hass.states[id]);
     const onStates = states.filter((s) => s?.state === "on");
     const levels = onStates.map(lightLevel).filter((v) => v !== null);
@@ -1020,7 +1092,10 @@ function lightsPane(hass, room, a, t, ids, auto, manualHint, { night, sleeping }
 function sunsetHint(advance, t) {
     return advance ? t("hint_lights_before_sunset", { d: formatDelay(advance * 60, t) }) : t("hint_lights_after_sunset");
 }
-function fansPane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, language, pending) {
+function fansPane(ctx, group, manualHint, pending) {
+    const { hass, room, a, t, language, presumed } = ctx;
+    const night = ctx.nightRules;
+    const { ids, auto } = group;
     const states = ids.map((id) => hass.states[id]);
     const onStates = states.filter((s) => s?.state === "on");
     const speeds = onStates
@@ -1085,7 +1160,10 @@ function fansPane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, 
         spin,
     };
 }
-function climatePane(hass, room, a, t, ids, auto, manualHint, { night, presumed }, language, pending) {
+function climatePane(ctx, group, manualHint, pending) {
+    const { hass, room, a, t, language, presumed } = ctx;
+    const night = ctx.nightRules;
+    const { ids, auto } = group;
     const states = ids.map((id) => hass.states[id]).filter((s) => !!s);
     const active = states.filter(isClimateOn);
     const main = active[0] ?? states[0];
@@ -1165,7 +1243,8 @@ function climatePane(hass, room, a, t, ids, auto, manualHint, { night, presumed 
         setpoint,
     };
 }
-function ambient(hass, room, a, t, language) {
+function ambient(ctx) {
+    const { hass, room, a, t, language } = ctx;
     const items = [];
     const measured = num(hass, a.temperature_sensor);
     const apparent = num(hass, room.apparent_temperature);
@@ -1911,16 +1990,15 @@ svg { width: 24px; height: 24px; fill: currentColor; display: block; flex: none;
 .card { container: lumina / inline-size; }
 `;
 
-// --- card.ts ---
-// Élément <lumina-card> : rendu et interactions. La logique d'affichage
-// (quoi montrer, quand) vit dans model.ts ; ce fichier ne fait que dessiner
-// et transmettre les gestes à Home Assistant.
-
-
-
+// --- dom.ts ---
+// Outils communs à la carte et à son éditeur.
+/**
+ * Classe de base des éléments : HTMLElement dans le navigateur, une classe
+ * vide ailleurs (le modèle est testé sous Node, sans DOM).
+ */
 const BaseElement = globalThis.HTMLElement ?? class {
 };
-/** Échappe un texte pour l'insérer dans du HTML. */
+/** Échappe un texte pour l'insérer dans du HTML, en contenu comme en attribut. */
 function esc(value) {
     return String(value ?? "")
         .replace(/&/g, "&amp;")
@@ -1928,6 +2006,25 @@ function esc(value) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
 }
+
+// --- card.ts ---
+// Élément <lumina-card> : rendu et interactions. La logique d'affichage
+// (quoi montrer, quand) vit dans model.ts ; ce fichier ne fait que dessiner
+// et transmettre les gestes à Home Assistant.
+
+
+
+
+/** Pause après un appui sur − / + avant d'envoyer la valeur : les appuis rapides sont regroupés. */
+const SEND_DELAY_MS = 700;
+/** Temps laissé à Home Assistant pour renvoyer l'état d'un réglage envoyé. */
+const NUMBER_ECHO_MS = 1500;
+/** Durée d'affichage de la valeur choisie (curseur, consigne), le temps que l'état suive. */
+const PENDING_HOLD_MS = 2500;
+/** Durée du message qui permet d'annuler une mise en pause. */
+const UNDO_NOTICE_MS = 8000;
+/** Rafraîchissement des comptes à rebours. */
+const TICK_MS = 1000;
 function svg(name) {
     return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
 }
@@ -2058,9 +2155,24 @@ class LuminaCard extends BaseElement {
         this._stopTick();
     }
     // --- Rendu ----------------------------------------------------------------
+    /** Langue de Home Assistant (français tant que hass n'est pas connu). */
+    get _language() {
+        return this._hass ? languageOf(this._hass) : "fr";
+    }
+    /** Textes de la carte dans la langue de Home Assistant. */
+    get _t() {
+        return translator(this._language);
+    }
+    _state(entityId) {
+        return this._hass?.states[entityId];
+    }
+    /** Redessine même si aucun état n'a changé (valeur en attente affichée ou retirée). */
+    _forceRender() {
+        this._signature = [];
+        this._render();
+    }
     /** États dont dépend l'affichage : on ne redessine que s'ils changent. */
-    _computeSignature(view) {
-        const hass = this._hass;
+    _computeSignature(hass, view) {
         const ids = new Set(Object.values(view.entities).filter((e) => !!e));
         const roomState = view.entities.room_state ? hass.states[view.entities.room_state] : undefined;
         const a = roomState?.attributes ?? {};
@@ -2080,7 +2192,7 @@ class LuminaCard extends BaseElement {
         if (this._dragging)
             return; // ne pas casser un glisser en cours
         const view = buildView(this._hass, this._config, new Date(), this._pending);
-        const signature = this._computeSignature(view);
+        const signature = this._computeSignature(this._hass, view);
         const changed = force ||
             signature.length !== this._signature.length ||
             signature.some((value, index) => value !== this._signature[index]);
@@ -2092,7 +2204,7 @@ class LuminaCard extends BaseElement {
     }
     _draw() {
         const view = this._view;
-        const t = translator(languageOf(this._hass));
+        const t = this._t;
         const tabs = settingTabs(view.entities, t);
         const hasSettings = tabs.length > 0 && !this._config.hide_settings;
         const body = this._settingsOpen && hasSettings && view.status === "ok"
@@ -2123,7 +2235,7 @@ class LuminaCard extends BaseElement {
         target?.focus({ preventScroll: true });
     }
     _renderMain(view, hasSettings) {
-        const t = translator(languageOf(this._hass));
+        const t = this._t;
         const header = `
       <header class="head">
         <div class="name">${esc(view.name)}</div>
@@ -2170,7 +2282,7 @@ class LuminaCard extends BaseElement {
         return this._notesOpen ? view.notes : view.notes.slice(0, 2);
     }
     _renderPeriod(view) {
-        const t = translator(languageOf(this._hass));
+        const t = this._t;
         const forcedEntity = view.entities.forced_night;
         const label = view.night ? t("night") : view.evening ? t("evening") : t("day");
         // Nuit naturelle : rien à basculer. Sinon : forcer ou annuler la nuit.
@@ -2186,7 +2298,7 @@ class LuminaCard extends BaseElement {
     _renderSleep(view) {
         if (!view.entities.sleeping)
             return "";
-        const t = translator(languageOf(this._hass));
+        const t = this._t;
         const title = view.sleeping ? t("wake_now") : t("sleep_now");
         return `<button class="period sleep ${view.sleeping ? "sleeping" : ""}" data-action="sleep"
         aria-pressed="${view.sleeping}" title="${esc(title)}" aria-label="${esc(title)}">
@@ -2219,7 +2331,7 @@ class LuminaCard extends BaseElement {
     }
     /** Consigne de la clim : − / +, envoyée après une pause (voir _setpoint). */
     _renderSetpoint(sp, t) {
-        const language = languageOf(this._hass);
+        const language = this._language;
         return `<div class="stepper setpoint" role="group" aria-label="${esc(t("setpoint"))}">
         <button data-action="setpoint" data-dir="-1" ${sp.value <= sp.min ? "disabled" : ""}
           title="${esc(t("setpoint_down"))}" aria-label="${esc(t("setpoint_down"))}">${svg("minus")}</button>
@@ -2266,9 +2378,8 @@ class LuminaCard extends BaseElement {
       </section>`;
     }
     _renderSettings(view, tabs) {
-        const hass = this._hass;
-        const language = languageOf(hass);
-        const t = translator(language);
+        const language = this._language;
+        const t = this._t;
         const current = tabs.find((tab) => tab.id === this._tab) ?? tabs[0];
         this._tab = current.id;
         const nav = `<div class="tabs" role="tablist">${tabs
@@ -2288,7 +2399,7 @@ class LuminaCard extends BaseElement {
       </div>`;
     }
     _renderRow(row, language, t) {
-        const state = this._hass.states[row.entity];
+        const state = this._state(row.entity);
         const help = (state && row.optionHelp?.[state.state]) ?? row.help;
         const text = `<div class="row-text"><div class="row-label">${esc(row.label)}</div>${help ? `<div class="row-help">${esc(help)}</div>` : ""}</div>`;
         if (!state || state.state === "unavailable") {
@@ -2351,7 +2462,7 @@ class LuminaCard extends BaseElement {
                 return;
             if (!this._patch(this._view))
                 this._draw();
-        }, 1000);
+        }, TICK_MS);
     }
     /**
      * Met à jour les comptes à rebours sans redessiner la carte : l'hélice ne
@@ -2382,12 +2493,14 @@ class LuminaCard extends BaseElement {
     // --- Gestes -----------------------------------------------------------------
     /** Appelle un service ; vrai s'il a réussi, sinon l'erreur est affichée. */
     async _call(domain, service, data) {
+        if (!this._hass)
+            return false;
         try {
             await this._hass.callService(domain, service, data);
             return true;
         }
         catch (err) {
-            const t = translator(languageOf(this._hass));
+            const t = this._t;
             const message = err instanceof Error ? err.message : String(err?.message ?? err);
             this._notify(t("error", { e: message }));
             return false;
@@ -2396,7 +2509,7 @@ class LuminaCard extends BaseElement {
     /** Message en bas de l'écran de Home Assistant, avec un bouton facultatif. */
     _notify(message, action) {
         this.dispatchEvent(new CustomEvent("hass-notification", {
-            detail: action ? { message, action, duration: 8000 } : { message },
+            detail: action ? { message, action, duration: UNDO_NOTICE_MS } : { message },
             bubbles: true,
             composed: true,
         }));
@@ -2409,7 +2522,7 @@ class LuminaCard extends BaseElement {
         const entityId = pane.autoEntity;
         if (!(await this._call("switch", "turn_off", { entity_id: entityId })))
             return;
-        const t = translator(languageOf(this._hass));
+        const t = this._t;
         const message = t(pane.kind === "lights" ? "note_lights_paused" : pane.kind === "fans" ? "note_fans_paused" : "note_climate_paused");
         this._notify(message, {
             text: t("undo"),
@@ -2462,12 +2575,12 @@ class LuminaCard extends BaseElement {
             case "sleep":
             case "wake":
                 if (room.sleeping) {
-                    const asleep = this._hass.states[room.sleeping]?.state === "on";
+                    const asleep = this._state(room.sleeping)?.state === "on";
                     void this._call("switch", action === "wake" || asleep ? "turn_off" : "turn_on", { entity_id: room.sleeping });
                 }
                 break;
             case "enable": {
-                const ids = [room.auto_lights, room.auto_fans, room.auto_climate].filter((id) => !!id && this._hass.states[id]?.state === "off");
+                const ids = [room.auto_lights, room.auto_fans, room.auto_climate].filter((id) => !!id && this._state(id)?.state === "off");
                 if (ids.length)
                     void this._call("switch", "turn_on", { entity_id: ids });
                 break;
@@ -2517,7 +2630,7 @@ class LuminaCard extends BaseElement {
     }
     /** Réglage numérique : valeur affichée tout de suite, envoyée après une pause. */
     _step(entityId, direction) {
-        const state = this._hass.states[entityId];
+        const state = this._state(entityId);
         if (!state)
             return;
         const a = state.attributes;
@@ -2544,11 +2657,10 @@ class LuminaCard extends BaseElement {
             window.setTimeout(() => {
                 if (this._numbers.get(entityId) === value) {
                     this._numbers.delete(entityId);
-                    this._signature = [];
-                    this._render();
+                    this._forceRender();
                 }
-            }, 1500);
-        }, 700));
+            }, NUMBER_ECHO_MS);
+        }, SEND_DELAY_MS));
     }
     /** Consigne de la clim : affichée tout de suite, envoyée après une pause. */
     _setpoint(direction) {
@@ -2558,24 +2670,19 @@ class LuminaCard extends BaseElement {
             return;
         const next = Math.min(sp.max, Math.max(sp.min, Number((sp.value + direction * sp.step).toFixed(2))));
         this._pending.climate = next;
-        this._signature = [];
-        this._render();
+        this._forceRender();
         window.clearTimeout(this._setpointTimer);
         window.clearTimeout(this._pendingTimers.climate);
         this._setpointTimer = window.setTimeout(async () => {
             // Seules les clims en marche reçoivent la consigne
             const ids = pane.entities.filter((id) => {
-                const state = this._hass.states[id]?.state;
+                const state = this._state(id)?.state;
                 return state !== undefined && !["off", "unavailable", "unknown"].includes(state);
             });
             if (ids.length)
                 await this._call("climate", "set_temperature", { entity_id: ids, temperature: next });
-            this._pendingTimers.climate = window.setTimeout(() => {
-                delete this._pending.climate;
-                this._signature = [];
-                this._render();
-            }, 2500);
-        }, 700);
+            this._releasePendingLater("climate");
+        }, SEND_DELAY_MS);
     }
     // --- Curseurs ---------------------------------------------------------------
     _onPointerDown(event) {
@@ -2699,14 +2806,16 @@ class LuminaCard extends BaseElement {
             if (others.length)
                 void this._call("homeassistant", value === 0 ? "turn_off" : "turn_on", { entity_id: others });
         }
+        this._releasePendingLater(kind);
+        this._forceRender();
+    }
+    /** Retire la valeur en attente après PENDING_HOLD_MS, le temps que l'état revienne. */
+    _releasePendingLater(kind) {
         window.clearTimeout(this._pendingTimers[kind]);
         this._pendingTimers[kind] = window.setTimeout(() => {
             delete this._pending[kind];
-            this._signature = [];
-            this._render();
-        }, 2500);
-        this._signature = [];
-        this._render();
+            this._forceRender();
+        }, PENDING_HOLD_MS);
     }
 }
 
@@ -2715,15 +2824,8 @@ class LuminaCard extends BaseElement {
 // Utilise le formulaire natif de Home Assistant (ha-form) quand il est
 // disponible, sinon une liste simple des pièces Lumina.
 
-const EditorBase = globalThis.HTMLElement ?? class {
-};
-function escAttr(value) {
-    return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/"/g, "&quot;")
-        .replace(/</g, "&lt;");
-}
-class LuminaCardEditor extends EditorBase {
+
+class LuminaCardEditor extends BaseElement {
     _config = { type: "custom:lumina-card" };
     _hass;
     _form;
@@ -2774,18 +2876,18 @@ class LuminaCardEditor extends EditorBase {
             return;
         }
         // Repli sans ha-form
-        const devices = luminaDevices(this._hass);
-        const options = devices
+        const hass = this._hass;
+        const options = luminaDevices(hass)
             .map((id) => {
-            const device = this._hass.devices?.[id];
-            const area = device?.area_id ? this._hass.areas?.[device.area_id]?.name : undefined;
+            const device = hass.devices?.[id];
+            const area = device?.area_id ? hass.areas?.[device.area_id]?.name : undefined;
             const label = area ?? device?.name_by_user ?? device?.name ?? id;
-            return `<option value="${escAttr(id)}" ${id === this._config.device ? "selected" : ""}>${escAttr(label)}</option>`;
+            return `<option value="${esc(id)}" ${id === this._config.device ? "selected" : ""}>${esc(label)}</option>`;
         })
             .join("");
         this.innerHTML = `
       <label style="display:flex;flex-direction:column;gap:4px;font:inherit">
-        ${escAttr(t("e_device"))}
+        ${esc(t("e_device"))}
         <select data-field="device"><option value=""></option>${options}</select>
       </label>`;
         this.querySelector("select")?.addEventListener("change", (event) => {
