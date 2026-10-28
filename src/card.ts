@@ -27,6 +27,7 @@ import {
   type SettingRow,
   type SettingTab,
   type Setpoint,
+  validateConfig,
 } from "./model.js";
 import { STYLES } from "./styles.js";
 
@@ -171,8 +172,7 @@ export class LuminaCard extends BaseElement {
   }
 
   setConfig(config: CardConfig): void {
-    if (!config) throw new Error("Configuration invalide");
-    this._config = { ...config };
+    this._config = validateConfig(config);
     this._signature = [];
     this._render(true);
   }
@@ -235,7 +235,10 @@ export class LuminaCard extends BaseElement {
     // Sans capteur de luminosité, l'aide des lumières suit le soleil : seul son
     // état compte, ses attributs (élévation…) changent toutes les quelques minutes.
     const sun = a.illuminance_sensor ? undefined : hass.states["sun.sun"]?.state;
-    return [languageOf(hass), sun, ...[...ids].sort().map((id) => hass.states[id])];
+    // Registres : nom de la zone ou de l'appareil. Home Assistant ne les remplace
+    // qu'à un changement de registre, pas à chaque changement d'état.
+    const registries = [hass.entities, hass.devices, hass.areas];
+    return [languageOf(hass), sun, ...registries, ...[...ids].sort().map((id) => hass.states[id])];
   }
 
   private _render(force = false): void {
@@ -485,7 +488,8 @@ export class LuminaCard extends BaseElement {
     const text = `<div class="row-text"><div class="row-label">${esc(row.label)}</div>${
       help ? `<div class="row-help">${esc(help)}</div>` : ""
     }</div>`;
-    if (!state || state.state === "unavailable") {
+    // Juste après un redémarrage de Lumina, un réglage peut être inconnu
+    if (!state || state.state === "unavailable" || state.state === "unknown") {
       return `<div class="row">${text}<span class="hint">—</span></div>`;
     }
 

@@ -122,6 +122,28 @@ export interface CardConfig {
   compact?: boolean;
 }
 
+const PANE_KINDS: readonly PaneKind[] = ["lights", "fans", "climate"];
+
+/**
+ * Vérifie la configuration écrite en YAML : une erreur claire vaut mieux
+ * qu'une carte vide. Home Assistant affiche le message dans une carte d'erreur.
+ */
+export function validateConfig(config: unknown): CardConfig {
+  if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("Configuration invalide");
+  const c = config as Record<string, unknown>;
+  for (const key of ["device", "entity", "name"]) {
+    if (c[key] !== undefined && typeof c[key] !== "string") throw new Error(`${key} doit être un texte`);
+  }
+  for (const key of ["hide_ambient", "hide_settings", "compact"]) {
+    if (c[key] !== undefined && typeof c[key] !== "boolean") throw new Error(`${key} doit valoir true ou false`);
+  }
+  const panes = c.hide_panes;
+  if (panes !== undefined && !(Array.isArray(panes) && panes.every((kind) => PANE_KINDS.includes(kind as PaneKind)))) {
+    throw new Error(`hide_panes doit être une liste parmi ${PANE_KINDS.join(", ")}`);
+  }
+  return { ...(c as unknown as CardConfig) };
+}
+
 // --- Entités d'une pièce -----------------------------------------------------
 
 /** Clés de traduction des entités Lumina, telles que définies par l'intégration. */

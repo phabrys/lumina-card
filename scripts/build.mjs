@@ -1,14 +1,16 @@
 // Compile les sources TypeScript puis les assemble en un seul module,
 // dist/lumina-card.js, sans dépendance : c'est le fichier que charge HACS.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
 
-// 1. Compilation (tsc local si installé, sinon celui du système)
+// 1. Compilation (tsc local si installé, sinon celui du système), dans un
+// dossier vidé : un module supprimé de src/ n'y traîne pas
+rmSync(join(root, "build"), { recursive: true, force: true });
 const localTsc = join(root, "node_modules", ".bin", "tsc");
 execFileSync(existsSync(localTsc) ? localTsc : "tsc", ["-p", join(root, "tsconfig.json")], {
   stdio: "inherit",
@@ -16,6 +18,12 @@ execFileSync(existsSync(localTsc) ? localTsc : "tsc", ["-p", join(root, "tsconfi
 
 // 2. Assemblage dans l'ordre des dépendances
 const ORDER = ["icons", "i18n", "model", "styles", "dom", "card", "editor", "index"];
+// Un module absent d'ORDER manquerait au bundle sans que node --check le voie
+const compiled = readdirSync(join(root, "build"))
+  .filter((file) => file.endsWith(".js"))
+  .map((file) => file.slice(0, -3));
+const missing = compiled.filter((name) => !ORDER.includes(name));
+if (missing.length) throw new Error(`Modules absents d'ORDER dans scripts/build.mjs : ${missing.join(", ")}`);
 const IMPORT = /^import\s[\s\S]*?\sfrom\s+["']\.\/[^"']+["'];?[ \t]*$/gm;
 const EXPORT_LIST = /^export\s*\{[^}]*\};?[ \t]*$/gm;
 const EXPORT_DECL = /^export\s+(?=(?:const|let|var|function|async\s+function|class)\b)/gm;

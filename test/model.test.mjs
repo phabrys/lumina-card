@@ -9,6 +9,7 @@ import {
   resolveRoom,
   settingTabs,
   translator,
+  validateConfig,
 } from "../build/model.js";
 import { durationStep, smartStep, snap, tickKey } from "../build/card.js";
 import { DEVICE, ENTITIES, makeHass } from "./fixtures.mjs";
@@ -739,4 +740,18 @@ test("avant Lumina 0.13 : pas de réglages de soirée", () => {
   assert.equal(view.evening, false);
   const keys = settingTabs(view.entities, translator("fr")).flatMap((tab) => tab.rows.map((r) => r.key));
   assert.ok(!keys.some((key) => key.startsWith("evening_")));
+});
+
+test("configuration YAML : erreurs claires, configuration valide recopiée", () => {
+  const valid = { ...config, name: "Chambre", compact: true, hide_panes: ["fans", "climate"] };
+  assert.deepEqual(validateConfig(valid), valid);
+  assert.notEqual(validateConfig(valid), valid);
+  assert.throws(() => validateConfig(null), /Configuration invalide/);
+  assert.throws(() => validateConfig({ ...config, device: 12 }), /device doit être un texte/);
+  assert.throws(() => validateConfig({ ...config, compact: "oui" }), /compact doit valoir true ou false/);
+  assert.throws(
+    () => validateConfig({ ...config, hide_panes: "lights" }),
+    /hide_panes doit être une liste parmi lights, fans, climate/,
+  );
+  assert.throws(() => validateConfig({ ...config, hide_panes: ["lumières"] }), /hide_panes/);
 });

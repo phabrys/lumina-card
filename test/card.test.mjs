@@ -385,3 +385,21 @@ test("carte retirée de la page : le compte à rebours s'arrête", () => {
   mock.timers.tick(2000);
   assert.equal($(root, ".now-text").textContent, "La lumière s'éteint dans 1:35");
 });
+
+test("réglage inconnu après un redémarrage de Lumina : un tiret, pas « NaN »", () => {
+  const { root } = mount({
+    states: {
+      [ENTITIES.light_off_delay]: { state: "unknown", attributes: { unit_of_measurement: "s", min: 0, max: 3600 } },
+    },
+  });
+  openSettings(root, "lights");
+  assert.ok(!$(root, `[data-entity="${ENTITIES.light_off_delay}"]`), "réglage inconnu affiché");
+  assert.ok(!root.querySelector(".rows").textContent.includes("NaN"));
+});
+
+test("zone renommée : le nom de la carte suit, sans changement d'état", () => {
+  const { root, hass } = mount();
+  assert.equal($(root, ".name").textContent, "Chambre Parents");
+  card.hass = { ...hass, areas: { chambre: { area_id: "chambre", name: "Suite parentale" } } };
+  assert.equal($(root, ".name").textContent, "Suite parentale");
+});
