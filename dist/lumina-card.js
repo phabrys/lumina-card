@@ -2111,6 +2111,8 @@ class LuminaCard extends BaseElement {
     _drawnKey;
     _dragging;
     _setpointTimer;
+    /** Envoi différé de la valeur d'un curseur réglé au clavier. */
+    _sliderTimers = {};
     _root;
     constructor() {
         super();
@@ -2184,7 +2186,10 @@ class LuminaCard extends BaseElement {
             if (a[key])
                 ids.add(a[key]);
         }
-        return [languageOf(hass), ...[...ids].sort().map((id) => hass.states[id])];
+        // Sans capteur de luminosité, l'aide des lumières suit le soleil : seul son
+        // état compte, ses attributs (élévation…) changent toutes les quelques minutes.
+        const sun = a.illuminance_sensor ? undefined : hass.states["sun.sun"]?.state;
+        return [languageOf(hass), sun, ...[...ids].sort().map((id) => hass.states[id])];
     }
     _render(force = false) {
         if (!this._config || !this._hass || !this.isConnected)
@@ -2675,10 +2680,7 @@ class LuminaCard extends BaseElement {
         window.clearTimeout(this._pendingTimers.climate);
         this._setpointTimer = window.setTimeout(async () => {
             // Seules les clims en marche reçoivent la consigne
-            const ids = pane.entities.filter((id) => {
-                const state = this._state(id)?.state;
-                return state !== undefined && !["off", "unavailable", "unknown"].includes(state);
-            });
+            const ids = pane.entities.filter((id) => isClimateOn(this._state(id)));
             if (ids.length)
                 await this._call("climate", "set_temperature", { entity_id: ids, temperature: next });
             this._releasePendingLater("climate");
@@ -2755,9 +2757,13 @@ class LuminaCard extends BaseElement {
         if (value === undefined)
             return;
         event.preventDefault();
+        // Valeur affichée tout de suite, envoyée après une pause : une touche
+        // maintenue n'envoie qu'un appel
         this._pending[kind] = value;
-        // La vue est recalculée avec la nouvelle valeur, puis redessinée
-        this._commit(kind);
+        window.clearTimeout(this._pendingTimers[kind]);
+        this._forceRender();
+        window.clearTimeout(this._sliderTimers[kind]);
+        this._sliderTimers[kind] = window.setTimeout(() => this._commit(kind), SEND_DELAY_MS);
     }
     /** Onglets des réglages : flèches, Origine et Fin passent d'un onglet à l'autre. */
     _onTabKey(event, tab) {
@@ -2783,6 +2789,7 @@ class LuminaCard extends BaseElement {
     _commit(kind) {
         const value = this._pending[kind];
         this._dragging = undefined;
+        window.clearTimeout(this._sliderTimers[kind]);
         const pane = this._pane(kind);
         if (value === undefined || !pane)
             return;

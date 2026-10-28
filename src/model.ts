@@ -786,7 +786,7 @@ function isNightEnd(hass: Hass, nightEnd: string | undefined, until: Date): bool
   return Number.isFinite(h) && Number.isFinite(m) && until.getHours() === h && until.getMinutes() === m;
 }
 
-function isClimateOn(state: HassEntity | undefined): boolean {
+export function isClimateOn(state: HassEntity | undefined): boolean {
   return !!state && !CLIMATE_OFF.has(state.state);
 }
 

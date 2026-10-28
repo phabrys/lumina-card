@@ -8,6 +8,7 @@ import { ICONS, type IconName } from "./icons.js";
 import {
   buildView,
   formatDuration,
+  isClimateOn,
   languageOf,
   settingTabs,
   translator,
@@ -130,6 +131,8 @@ export class LuminaCard extends BaseElement {
   private _drawnKey?: string;
   private _dragging?: { kind: "lights" | "fans"; slider: HTMLElement };
   private _setpointTimer?: number;
+  /** Envoi différé de la valeur d'un curseur réglé au clavier. */
+  private _sliderTimers: Partial<Record<"lights" | "fans", number>> = {};
   private _root: ShadowRoot;
 
   constructor() {
@@ -219,7 +222,10 @@ export class LuminaCard extends BaseElement {
     for (const key of ["illuminance_sensor", "temperature_sensor", "humidity_sensor", "sleep_entity"]) {
       if (a[key]) ids.add(a[key] as string);
     }
-    return [languageOf(hass), ...[...ids].sort().map((id) => hass.states[id])];
+    // Sans capteur de luminosité, l'aide des lumières suit le soleil : seul son
+    // état compte, ses attributs (élévation…) changent toutes les quelques minutes.
+    const sun = a.illuminance_sensor ? undefined : hass.states["sun.sun"]?.state;
+    return [languageOf(hass), sun, ...[...ids].sort().map((id) => hass.states[id])];
   }
 
   private _render(force = false): void {
@@ -747,10 +753,7 @@ export class LuminaCard extends BaseElement {
     window.clearTimeout(this._pendingTimers.climate);
     this._setpointTimer = window.setTimeout(async () => {
       // Seules les clims en marche reçoivent la consigne
-      const ids = pane.entities.filter((id) => {
-        const state = this._state(id)?.state;
-        return state !== undefined && !["off", "unavailable", "unknown"].includes(state);
-      });
+      const ids = pane.entities.filter((id) => isClimateOn(this._state(id)));
       if (ids.length) await this._call("climate", "set_temperature", { entity_id: ids, temperature: next });
       this._releasePendingLater("climate");
     }, SEND_DELAY_MS);
@@ -822,9 +825,13 @@ export class LuminaCard extends BaseElement {
     else if (event.key === "End") value = 100;
     if (value === undefined) return;
     event.preventDefault();
+    // Valeur affichée tout de suite, envoyée après une pause : une touche
+    // maintenue n'envoie qu'un appel
     this._pending[kind] = value;
-    // La vue est recalculée avec la nouvelle valeur, puis redessinée
-    this._commit(kind);
+    window.clearTimeout(this._pendingTimers[kind]);
+    this._forceRender();
+    window.clearTimeout(this._sliderTimers[kind]);
+    this._sliderTimers[kind] = window.setTimeout(() => this._commit(kind), SEND_DELAY_MS);
   }
 
   /** Onglets des réglages : flèches, Origine et Fin passent d'un onglet à l'autre. */
@@ -852,6 +859,7 @@ export class LuminaCard extends BaseElement {
   private _commit(kind: "lights" | "fans"): void {
     const value = this._pending[kind];
     this._dragging = undefined;
+    window.clearTimeout(this._sliderTimers[kind]);
     const pane = this._pane(kind);
     if (value === undefined || !pane) return;
 

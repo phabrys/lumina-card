@@ -173,17 +173,42 @@ test("onglets : les flèches changent d'onglet et déplacent le focus", () => {
   );
 });
 
-test("curseur au clavier : valeur affichée et envoyée tout de suite", async () => {
+test("curseur au clavier : valeur affichée tout de suite, envoyée une fois après une pause", async () => {
   const { root, calls } = mount();
-  const slider = $(root, '.slider[data-kind="lights"]');
-  slider.focus();
-  slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, composed: true }));
+  const press = () =>
+    root.activeElement.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, composed: true }),
+    );
+  $(root, '.slider[data-kind="lights"]').focus();
+  press();
   await flush();
   assert.equal($(root, '.slider[data-kind="lights"]').getAttribute("aria-valuetext"), "75 %");
   assert.equal(root.activeElement?.getAttribute("role"), "slider");
+  assert.deepEqual(calls, []);
+  press();
+  press();
+  mock.timers.tick(699);
+  await flush();
+  assert.deepEqual(calls, []);
+  mock.timers.tick(1);
+  await flush();
+  assert.equal($(root, '.slider[data-kind="lights"]').getAttribute("aria-valuetext"), "85 %");
   assert.deepEqual(calls, [
-    { domain: "light", service: "turn_on", data: { entity_id: ["light.chambre"], brightness_pct: 75 } },
+    { domain: "light", service: "turn_on", data: { entity_id: ["light.chambre"], brightness_pct: 85 } },
   ]);
+});
+
+test("sans capteur de luminosité, l'aide des lumières suit le coucher du soleil", () => {
+  const off = { "light.chambre": { state: "off", attributes: {} } };
+  const sun = (state) => ({ "sun.sun": { state, attributes: {} } });
+  const { card, hass, root } = mount({
+    room: { illuminance_sensor: null },
+    states: { ...off, ...sun("above_horizon") },
+  });
+  const hint = () => $(root, ".pane-lights .hint").textContent;
+  assert.equal(hint(), "S'allume après le coucher du soleil");
+  card.hass = { ...hass, states: { ...hass.states, ...sun("below_horizon") } };
+  assert.equal(hint(), "S'allume à ton arrivée");
 });
 
 test("notes : deux d'emblée, les autres derrière +1", () => {
