@@ -7,12 +7,14 @@ import type { Translate } from "./i18n.js";
 import { ICONS, type IconName } from "./icons.js";
 import {
   buildView,
+  deviceOf,
   formatDuration,
   formatNumber,
   isClimateOn,
   languageOf,
   numberRange,
   PAUSED_NOTE,
+  resolveRoom,
   roomStateEntities,
   settingTabs,
   translator,
@@ -198,6 +200,11 @@ export class LuminaCard extends BaseElement {
     this._render(true);
   }
 
+  /**
+   * Seul le compte à rebours s'arrête : un réglage, une consigne ou un curseur
+   * touchés juste avant de quitter le tableau de bord partent quand même, après
+   * leur pause habituelle. Les redessins qui suivent sont ignorés (_render).
+   */
   disconnectedCallback(): void {
     this._stopTick();
   }
@@ -224,14 +231,16 @@ export class LuminaCard extends BaseElement {
     this._render();
   }
 
-  /** États dont dépend l'affichage : on ne redessine que s'ils changent. */
-  private _computeSignature(hass: Hass, view: RoomView): unknown[] {
-    const roomState = view.entities.room_state ? hass.states[view.entities.room_state] : undefined;
+  /**
+   * États dont dépend l'affichage : on ne recalcule et ne redessine que s'ils
+   * changent. Calculée sans buildView : Home Assistant renvoie hass à chaque
+   * changement d'état de la maison, le plus souvent hors de la pièce.
+   */
+  private _computeSignature(hass: Hass, config: CardConfig): unknown[] {
+    const room = resolveRoom(hass, deviceOf(hass, config));
+    const roomState = room.room_state ? hass.states[room.room_state] : undefined;
     const a: RoomStateAttributes = roomState?.attributes ?? {};
-    const ids = new Set<string>([
-      ...Object.values(view.entities).filter((e): e is string => !!e),
-      ...roomStateEntities(a),
-    ]);
+    const ids = new Set<string>([...Object.values(room).filter((e): e is string => !!e), ...roomStateEntities(a)]);
     // Sans capteur de luminosité, l'aide des lumières suit le soleil : seul son
     // état compte, ses attributs (élévation…) changent toutes les quelques minutes.
     const sun = a.illuminance_sensor ? undefined : hass.states["sun.sun"]?.state;
@@ -244,15 +253,15 @@ export class LuminaCard extends BaseElement {
   private _render(force = false): void {
     if (!this._config || !this._hass || !this.isConnected) return;
     if (this._dragging) return; // ne pas casser un glisser en cours
-    const view = buildView(this._hass, this._config, new Date(), this._pending);
-    const signature = this._computeSignature(this._hass, view);
+    const signature = this._computeSignature(this._hass, this._config);
     const changed =
       force ||
+      !this._view ||
       signature.length !== this._signature.length ||
       signature.some((value, index) => value !== this._signature[index]);
-    this._view = view;
     if (!changed) return;
     this._signature = signature;
+    this._view = buildView(this._hass, this._config, new Date(), this._pending);
     this._draw();
   }
 

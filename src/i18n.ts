@@ -484,9 +484,14 @@ const en: Strings = {
 export type StringKey = keyof Strings;
 export type Translate = (key: StringKey, vars?: Record<string, string | number>) => string;
 
+/** Un traducteur par table, créé à la première demande. */
+const translators = new Map<Strings, Translate>();
+
 export function translator(language: string | undefined): Translate {
   const table = (language ?? "fr").toLowerCase().startsWith("fr") ? fr : en;
-  return (key, vars) => {
+  const cached = translators.get(table);
+  if (cached) return cached;
+  const t: Translate = (key, vars) => {
     let text: string = table[key] ?? fr[key] ?? key;
     if (vars) {
       for (const [name, value] of Object.entries(vars)) {
@@ -495,4 +500,6 @@ export function translator(language: string | undefined): Translate {
     }
     return text;
   };
+  translators.set(table, t);
+  return t;
 }

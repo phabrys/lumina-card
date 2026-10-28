@@ -511,9 +511,14 @@ const en = {
     e_hide_panes: "Groups hidden on this card",
     e_hide_settings: "Hide the settings gear",
 };
+/** Un traducteur par table, créé à la première demande. */
+const translators = new Map();
 function translator(language) {
     const table = (language ?? "fr").toLowerCase().startsWith("fr") ? fr : en;
-    return (key, vars) => {
+    const cached = translators.get(table);
+    if (cached)
+        return cached;
+    const t = (key, vars) => {
         let text = table[key] ?? fr[key] ?? key;
         if (vars) {
             for (const [name, value] of Object.entries(vars)) {
@@ -522,6 +527,8 @@ function translator(language) {
         }
         return text;
     };
+    translators.set(table, t);
+    return t;
 }
 
 // --- model.ts ---
@@ -1007,11 +1014,8 @@ function deadSensorsNote(ctx) {
     });
     if (!dead.length)
         return null;
-    const changes = dead
-        .map((e) => parseDate(hass.states[e]?.last_changed))
-        .filter((d) => d !== null)
-        .sort((x, y) => x.getTime() - y.getTime());
-    const since = changes.length ? formatSince(changes[0], now, language, t) : "";
+    const first = earliest(dead.map((e) => parseDate(hass.states[e]?.last_changed)));
+    const since = first ? formatSince(first, now, language, t) : "";
     if (dead.length < sensors.length) {
         return t("note_sensor_dead", {
             name: joinWords(dead.map((e) => friendly(hass, e)), t("w_and")),
@@ -2194,6 +2198,11 @@ class LuminaCard extends BaseElement {
     connectedCallback() {
         this._render(true);
     }
+    /**
+     * Seul le compte à rebours s'arrête : un réglage, une consigne ou un curseur
+     * touchés juste avant de quitter le tableau de bord partent quand même, après
+     * leur pause habituelle. Les redessins qui suivent sont ignorés (_render).
+     */
     disconnectedCallback() {
         this._stopTick();
     }
@@ -2214,14 +2223,16 @@ class LuminaCard extends BaseElement {
         this._signature = [];
         this._render();
     }
-    /** États dont dépend l'affichage : on ne redessine que s'ils changent. */
-    _computeSignature(hass, view) {
-        const roomState = view.entities.room_state ? hass.states[view.entities.room_state] : undefined;
+    /**
+     * États dont dépend l'affichage : on ne recalcule et ne redessine que s'ils
+     * changent. Calculée sans buildView : Home Assistant renvoie hass à chaque
+     * changement d'état de la maison, le plus souvent hors de la pièce.
+     */
+    _computeSignature(hass, config) {
+        const room = resolveRoom(hass, deviceOf(hass, config));
+        const roomState = room.room_state ? hass.states[room.room_state] : undefined;
         const a = roomState?.attributes ?? {};
-        const ids = new Set([
-            ...Object.values(view.entities).filter((e) => !!e),
-            ...roomStateEntities(a),
-        ]);
+        const ids = new Set([...Object.values(room).filter((e) => !!e), ...roomStateEntities(a)]);
         // Sans capteur de luminosité, l'aide des lumières suit le soleil : seul son
         // état compte, ses attributs (élévation…) changent toutes les quelques minutes.
         const sun = a.illuminance_sensor ? undefined : hass.states["sun.sun"]?.state;
@@ -2235,15 +2246,15 @@ class LuminaCard extends BaseElement {
             return;
         if (this._dragging)
             return; // ne pas casser un glisser en cours
-        const view = buildView(this._hass, this._config, new Date(), this._pending);
-        const signature = this._computeSignature(this._hass, view);
+        const signature = this._computeSignature(this._hass, this._config);
         const changed = force ||
+            !this._view ||
             signature.length !== this._signature.length ||
             signature.some((value, index) => value !== this._signature[index]);
-        this._view = view;
         if (!changed)
             return;
         this._signature = signature;
+        this._view = buildView(this._hass, this._config, new Date(), this._pending);
         this._draw();
     }
     _draw() {
@@ -2861,6 +2872,8 @@ class LuminaCardEditor extends BaseElement {
     _config = { type: "custom:lumina-card" };
     _hass;
     _form;
+    /** Contenu de l'éditeur de secours, pour ne pas le réécrire à chaque mise à jour de hass. */
+    _fallback;
     setConfig(config) {
         this._config = { ...config };
         this._render();
@@ -2917,11 +2930,16 @@ class LuminaCardEditor extends BaseElement {
             return `<option value="${esc(id)}" ${id === this._config.device ? "selected" : ""}>${esc(label)}</option>`;
         })
             .join("");
-        this.innerHTML = `
+        const html = `
       <label style="display:flex;flex-direction:column;gap:4px;font:inherit">
         ${esc(t("e_device"))}
         <select data-field="device"><option value=""></option>${options}</select>
       </label>`;
+        // Une liste déroulante ouverte se refermerait à chaque changement d'état
+        if (html === this._fallback)
+            return;
+        this._fallback = html;
+        this.innerHTML = html;
         this.querySelector("select")?.addEventListener("change", (event) => {
             this._update({ ...this._config, device: event.target.value || undefined });
         });

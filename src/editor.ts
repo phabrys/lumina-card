@@ -10,6 +10,8 @@ export class LuminaCardEditor extends BaseElement {
   private _config: CardConfig = { type: "custom:lumina-card" };
   private _hass?: Hass;
   private _form?: HTMLElement & Record<string, unknown>;
+  /** Contenu de l'éditeur de secours, pour ne pas le réécrire à chaque mise à jour de hass. */
+  private _fallback?: string;
 
   setConfig(config: CardConfig): void {
     this._config = { ...config };
@@ -71,11 +73,15 @@ export class LuminaCardEditor extends BaseElement {
         return `<option value="${esc(id)}" ${id === this._config.device ? "selected" : ""}>${esc(label)}</option>`;
       })
       .join("");
-    this.innerHTML = `
+    const html = `
       <label style="display:flex;flex-direction:column;gap:4px;font:inherit">
         ${esc(t("e_device"))}
         <select data-field="device"><option value=""></option>${options}</select>
       </label>`;
+    // Une liste déroulante ouverte se refermerait à chaque changement d'état
+    if (html === this._fallback) return;
+    this._fallback = html;
+    this.innerHTML = html;
     this.querySelector("select")?.addEventListener("change", (event) => {
       this._update({ ...this._config, device: (event.target as HTMLSelectElement).value || undefined });
     });

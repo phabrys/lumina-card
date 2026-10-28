@@ -797,11 +797,8 @@ function deadSensorsNote(ctx: ViewContext): string | null {
     return !state || state.state === "unavailable" || state.state === "unknown";
   });
   if (!dead.length) return null;
-  const changes = dead
-    .map((e) => parseDate(hass.states[e]?.last_changed))
-    .filter((d): d is Date => d !== null)
-    .sort((x, y) => x.getTime() - y.getTime());
-  const since = changes.length ? formatSince(changes[0], now, language, t) : "";
+  const first = earliest(dead.map((e) => parseDate(hass.states[e]?.last_changed)));
+  const since = first ? formatSince(first, now, language, t) : "";
   if (dead.length < sensors.length) {
     return t("note_sensor_dead", {
       name: joinWords(

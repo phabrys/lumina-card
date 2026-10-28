@@ -23,7 +23,9 @@ globalThis.window = Object.fromEntries(
 
 // La carte doit voir le HTMLElement de happy-dom au chargement
 const { LuminaCard } = await import("../build/card.js");
+const { LuminaCardEditor } = await import("../build/editor.js");
 customElements.define("lumina-card", LuminaCard);
+customElements.define("lumina-card-editor", LuminaCardEditor);
 
 const NOW = new Date("2026-10-20T15:00:00Z").getTime();
 const inSeconds = (s) => new Date(NOW + s * 1000).toISOString();
@@ -402,4 +404,45 @@ test("zone renommée : le nom de la carte suit, sans changement d'état", () => 
   assert.equal($(root, ".name").textContent, "Chambre Parents");
   card.hass = { ...hass, areas: { chambre: { area_id: "chambre", name: "Suite parentale" } } };
   assert.equal($(root, ".name").textContent, "Suite parentale");
+});
+
+test("carte retirée juste après un réglage : la valeur part quand même", async () => {
+  const { root, calls } = mount();
+  openSettings(root, "lights");
+  $(root, `[data-action="step"][data-dir="1"][data-entity="${ENTITIES.light_off_delay}"]`).click();
+  card.remove();
+  mock.timers.tick(700);
+  await flush();
+  assert.deepEqual(calls, [
+    { domain: "number", service: "set_value", data: { entity_id: ENTITIES.light_off_delay, value: 150 } },
+  ]);
+  // La valeur en attente s'efface ensuite sans erreur, carte retirée
+  mock.timers.tick(1500);
+});
+
+test("changement d'état hors de la pièce : rien n'est recalculé ni redessiné", () => {
+  const { root, hass } = mount();
+  const pane = $(root, ".pane-lights");
+  card.hass = {
+    ...hass,
+    states: { ...hass.states, "light.cuisine": { entity_id: "light.cuisine", state: "on", attributes: {} } },
+  };
+  assert.ok($(root, ".pane-lights") === pane, "carte redessinée");
+  // La vue n'est pas recalculée : la même instance est gardée
+  const view = card._view;
+  card.hass = { ...hass, states: { ...hass.states } };
+  assert.ok(card._view === view, "vue recalculée");
+});
+
+test("éditeur sans ha-form : la liste des pièces n'est pas réécrite à chaque mise à jour", () => {
+  const editor = document.createElement("lumina-card-editor");
+  document.body.appendChild(editor);
+  const hass = makeHass();
+  editor.setConfig({ type: "custom:lumina-card", device: DEVICE });
+  editor.hass = hass;
+  const select = editor.querySelector("select");
+  assert.equal(select.value, DEVICE);
+  editor.hass = { ...hass, states: { ...hass.states } };
+  assert.ok(editor.querySelector("select") === select, "liste réécrite");
+  editor.remove();
 });
