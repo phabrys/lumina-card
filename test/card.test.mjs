@@ -361,21 +361,101 @@ test("gestes de la carte : chaque bouton appelle le bon service", async () => {
   }
 });
 
-test("gestes des réglages : interrupteur, liste de choix et heure", async () => {
+test("gestes des réglages : interrupteur et liste de choix", async () => {
   const { root, calls } = mount();
   openSettings(root, "lights");
   $(root, `[data-action="switch"][data-entity="${ENTITIES.auto_lights}"]`).click();
   $(root, `[data-action="select"][data-entity="${ENTITIES.lights_mode}"][data-option="any"]`).click();
-  $(root, '[data-tab="night"]').click();
-  const time = $(root, `input[data-entity="${ENTITIES.night_start}"]`);
-  time.value = "23:30";
-  time.dispatchEvent(new window.Event("change", { bubbles: true }));
   await flush();
   assert.deepEqual(calls, [
     { domain: "switch", service: "toggle", data: { entity_id: ENTITIES.auto_lights } },
     { domain: "select", service: "select_option", data: { entity_id: ENTITIES.lights_mode, option: "any" } },
-    { domain: "time", service: "set_value", data: { entity_id: ENTITIES.night_start, time: "23:30:00" } },
   ]);
+});
+
+/** Ouvre l'onglet Nuit et donne le focus au champ du début de nuit. */
+function timeInput(root) {
+  openSettings(root, "night");
+  const input = $(root, `input[data-entity="${ENTITIES.night_start}"]`);
+  input.focus();
+  return input;
+}
+
+/** Saisie au clavier comme sous Chrome : un « change » à chaque chiffre. */
+function type(input, values) {
+  for (const value of values) {
+    input.value = value;
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+  }
+}
+
+const nightStart = (time) => ({
+  domain: "time",
+  service: "set_value",
+  data: { entity_id: ENTITIES.night_start, time },
+});
+
+test("heure tapée chiffre par chiffre : envoyée une fois, en quittant le champ", async () => {
+  const { root, calls } = mount();
+  const input = timeInput(root);
+  type(input, ["02:00", "23:00", "23:03", "23:30"]);
+  await flush();
+  assert.deepEqual(calls, [], "heure envoyée avant la fin de la saisie");
+  assert.ok(root.activeElement === input, "focus retiré pendant la saisie");
+  input.blur();
+  await flush();
+  assert.deepEqual(calls, [nightStart("23:30:00")]);
+});
+
+test("heure validée par Entrée : pas de second envoi en quittant le champ", async () => {
+  const { root, calls } = mount();
+  const input = timeInput(root);
+  type(input, ["23:30"]);
+  input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, composed: true }));
+  input.blur();
+  await flush();
+  assert.deepEqual(calls, [nightStart("23:30:00")]);
+});
+
+test("heure inchangée : rien n'est envoyé", async () => {
+  const { root, calls } = mount();
+  const input = timeInput(root);
+  type(input, ["22:00"]);
+  input.blur();
+  await flush();
+  assert.deepEqual(calls, []);
+});
+
+test("état reçu pendant la saisie : champ gardé, carte redessinée au prochain état", () => {
+  const { root, hass } = mount();
+  const input = timeInput(root);
+  type(input, ["23:30"]);
+  const update = (state) => {
+    card.hass = {
+      ...hass,
+      states: { ...hass.states, [ENTITIES.night_end]: { entity_id: ENTITIES.night_end, state, attributes: {} } },
+    };
+  };
+  update("06:30:00");
+  assert.ok($(root, `input[data-entity="${ENTITIES.night_start}"]`) === input, "champ remplacé pendant la saisie");
+  assert.equal(input.value, "23:30");
+  input.blur();
+  // Pas de redessin au moment où le champ est quitté…
+  assert.ok($(root, `input[data-entity="${ENTITIES.night_start}"]`) === input, "redessin en quittant le champ");
+  // … mais au prochain état reçu, même inchangé pour la pièce
+  card.hass = { ...hass, states: { ...card.hass.states } };
+  assert.equal($(root, `input[data-entity="${ENTITIES.night_end}"]`).value, "06:30");
+});
+
+test("bouton touché pendant la saisie (Safari, focus resté dans le champ) : geste exécuté, heure envoyée", async () => {
+  const { root, calls } = mount();
+  const input = timeInput(root);
+  type(input, ["23:30"]);
+  // Sous Safari, toucher un bouton ne lui donne pas le focus
+  $(root, '[data-tab="presence"]').click();
+  await flush();
+  assert.equal($(root, '[role="tab"][aria-selected="true"]').dataset.tab, "presence");
+  assert.deepEqual(calls, [nightStart("23:30:00")]);
 });
 
 test("carte retirée de la page : le compte à rebours s'arrête", () => {

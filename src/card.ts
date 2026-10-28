@@ -149,13 +149,15 @@ export class LuminaCard extends BaseElement {
   private _setpointTimer?: number;
   /** Envoi différé de la valeur d'un curseur réglé au clavier. */
   private _sliderTimers: Partial<Record<"lights" | "fans", number>> = {};
+  /** Redessin retenu pendant la saisie d'une heure, à faire une fois le champ quitté. */
+  private _stale = false;
   private _root: ShadowRoot;
 
   constructor() {
     super();
     this._root = this.attachShadow({ mode: "open" });
     this._root.addEventListener("click", (event) => this._onClick(event));
-    this._root.addEventListener("change", (event) => this._onChange(event));
+    this._root.addEventListener("focusout", (event) => this._onFocusOut(event));
     this._root.addEventListener("pointerdown", (event) => this._onPointerDown(event as PointerEvent));
     this._root.addEventListener("keydown", (event) => this._onKeyDown(event as KeyboardEvent));
   }
@@ -262,7 +264,19 @@ export class LuminaCard extends BaseElement {
     if (!changed) return;
     this._signature = signature;
     this._view = buildView(this._hass, this._config, new Date(), this._pending);
+    // Un changement d'état ne redessine pas un champ en cours de saisie : la
+    // carte le sera une fois le champ quitté (voir _onFocusOut)
+    if (this._editedInput()) {
+      this._stale = true;
+      return;
+    }
     this._draw();
+  }
+
+  /** Champ de réglage en cours de saisie (heure), s'il y en a un. */
+  private _editedInput(): HTMLInputElement | undefined {
+    const focused = this._root.activeElement as HTMLInputElement | null;
+    return focused?.matches?.("input") ? focused : undefined;
   }
 
   private _draw(): void {
@@ -275,10 +289,13 @@ export class LuminaCard extends BaseElement {
         ? this._renderSettings(view, tabs)
         : this._renderMain(view, hasSettings);
 
-    // Les champs de réglage en cours d'édition ne sont pas redessinés.
-    const focused = this._root.activeElement as HTMLElement | null;
-    if (focused?.matches?.("input")) return;
+    // Geste pendant une saisie : Safari ne donne pas le focus au bouton touché,
+    // le champ est encore actif. L'heure tapée part avant qu'il soit remplacé.
+    const edited = this._editedInput();
+    if (edited) this._sendTime(edited);
+    this._stale = false;
 
+    const focused = this._root.activeElement as HTMLElement | null;
     const selector = focusSelector(focused);
     this._root.innerHTML = `<style>${STYLES}</style><ha-card>${body}</ha-card>`;
     if (selector) this._restoreFocus(selector, focused!.dataset.action);
@@ -711,11 +728,29 @@ export class LuminaCard extends BaseElement {
     }
   }
 
-  private _onChange(event: Event): void {
-    const target = event.target as HTMLInputElement;
-    if (target.dataset.action !== "time" || !target.dataset.entity || !target.value) return;
-    void this._call("time", "set_value", { entity_id: target.dataset.entity, time: `${target.value}:00` });
-    target.blur();
+  /**
+   * Heure envoyée en quittant le champ ou sur Entrée, pas sur « change » :
+   * Chrome le déclenche à chaque chiffre (« 2 » de 23:30 → 02:00).
+   */
+  private _sendTime(input: HTMLInputElement): void {
+    const entity = input.dataset.entity;
+    if (input.dataset.action !== "time" || !entity || !input.value) return;
+    // Déjà envoyée (Entrée puis sortie du champ), ou inchangée
+    if (input.value === input.dataset.sent || input.value === this._state(entity)?.state.slice(0, 5)) return;
+    input.dataset.sent = input.value;
+    void this._call("time", "set_value", { entity_id: entity, time: `${input.value}:00` });
+  }
+
+  private _onFocusOut(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    if (input.dataset?.action !== "time") return;
+    this._sendTime(input);
+    // Redessin au prochain état reçu, pas tout de suite : le clic qui fait
+    // quitter le champ viserait un bouton déjà remplacé
+    if (this._stale) {
+      this._stale = false;
+      this._signature = [];
+    }
   }
 
   /** Réglage numérique : valeur affichée tout de suite, envoyée après une pause. */
@@ -812,6 +847,10 @@ export class LuminaCard extends BaseElement {
   }
 
   private _onKeyDown(event: KeyboardEvent): void {
+    if (event.key === "Enter" && (event.target as HTMLElement).dataset?.action === "time") {
+      this._sendTime(event.target as HTMLInputElement);
+      return;
+    }
     const tab = (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]');
     if (tab) {
       this._onTabKey(event, tab);
