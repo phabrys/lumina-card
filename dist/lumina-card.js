@@ -579,6 +579,12 @@ function roomName(hass, config, room) {
         return hass.areas[areaId].name;
     return device?.name_by_user || device?.name || "Lumina";
 }
+/** Note d'un groupe dont l'automatisme est en pause. */
+const PAUSED_NOTE = {
+    lights: "note_lights_paused",
+    fans: "note_fans_paused",
+    climate: "note_climate_paused",
+};
 /** États d'une clim qui ne la comptent pas comme allumée. */
 const CLIMATE_OFF = new Set(["off", "unavailable", "unknown"]);
 const HOLD_INACTIVE = new Set(["off", "idle", "standby", "paused", "unavailable", "unknown", "not_home", "closed"]);
@@ -618,8 +624,13 @@ function formatCountdown(ms) {
 function formatClock(date, language) {
     return date.toLocaleTimeString(language, { hour: "2-digit", minute: "2-digit" });
 }
-function formatNumber(value, language, digits = 0) {
-    return value.toLocaleString(language, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+/** Nombre dans la langue de l'interface, avec au plus `digits` décimales (et au moins `minDigits`). */
+function formatNumber(value, language, digits = 0, minDigits = 0) {
+    return value.toLocaleString(language, { maximumFractionDigits: digits, minimumFractionDigits: minDigits });
+}
+/** Moyenne, null pour une liste vide. */
+function average(values) {
+    return values.length ? values.reduce((x, y) => x + y, 0) / values.length : null;
 }
 function languageOf(hass) {
     return hass.locale?.language ?? hass.language ?? "fr";
@@ -897,12 +908,9 @@ function secondaryNotes(ctx, groups, line) {
     }
     // La phrase « tout est en pause » le dit déjà
     if (line.action?.kind !== "enable") {
-        if (paused("lights"))
-            notes.push(t("note_lights_paused"));
-        if (paused("fans"))
-            notes.push(t("note_fans_paused"));
-        if (paused("climate"))
-            notes.push(t("note_climate_paused"));
+        for (const g of groups)
+            if (g.auto === "paused")
+                notes.push(t(PAUSED_NOTE[g.kind]));
     }
     const applied = has("climate") && !occupied ? a.climate_vacant_applied : null;
     if (applied === "off")
@@ -1025,7 +1033,7 @@ function lightsPane(ctx, group, manualHint, pending) {
     const onStates = states.filter((s) => s?.state === "on");
     const levels = onStates.map(lightLevel).filter((v) => v !== null);
     const dimmable = states.some(lightDimmable);
-    let level = dimmable ? (levels.length ? Math.round(levels.reduce((x, y) => x + y, 0) / levels.length) : 0) : null;
+    let level = dimmable ? Math.round(average(levels) ?? 0) : null;
     let on = onStates.length > 0;
     if (pending !== undefined) {
         level = dimmable ? pending : level;
@@ -1038,9 +1046,8 @@ function lightsPane(ctx, group, manualHint, pending) {
     const kelvins = onStates
         .filter((s) => s?.attributes.color_mode === "color_temp" && typeof s.attributes.color_temp_kelvin === "number")
         .map((s) => s.attributes.color_temp_kelvin);
-    const detail = kelvins.length
-        ? `${formatNumber(Math.round(kelvins.reduce((x, y) => x + y, 0) / kelvins.length / 100) * 100, language)} K`
-        : undefined;
+    const kelvin = average(kelvins);
+    const detail = kelvin !== null ? `${formatNumber(Math.round(kelvin / 100) * 100, language)} K` : undefined;
     let hint;
     if (auto === "paused")
         hint = t("hint_paused");
@@ -1102,7 +1109,7 @@ function fansPane(ctx, group, manualHint, pending) {
         .map((s) => (typeof s?.attributes.percentage === "number" ? s.attributes.percentage : null))
         .filter((v) => v !== null);
     const adjustable = states.some((s) => s?.entity_id.startsWith("fan.") && "percentage" in (s.attributes ?? {}));
-    let level = adjustable ? (speeds.length ? Math.round(speeds.reduce((x, y) => x + y, 0) / speeds.length) : 0) : null;
+    let level = adjustable ? Math.round(average(speeds) ?? 0) : null;
     let on = onStates.length > 0;
     if (pending !== undefined) {
         level = adjustable ? pending : level;
@@ -1273,6 +1280,12 @@ function ambient(ctx) {
         items.push({ icon: "brightness", entity: a.illuminance_sensor, value: `${formatNumber(lux, language)} lx` });
     }
     return items;
+}
+// --- Réglages ------------------------------------------------------------------
+/** Bornes et pas d'un réglage numérique, avec les valeurs par défaut de Home Assistant. */
+function numberRange(state) {
+    const a = state.attributes;
+    return { min: Number(a.min ?? 0), max: Number(a.max ?? 100), step: Number(a.step ?? 1) };
 }
 const ALL_ANY = { all: "o_all", any: "o_any" };
 const CLIMATE_ACTIONS = {
@@ -2058,7 +2071,7 @@ function snap(value, step) {
 }
 function formatValue(value, step, language) {
     const digits = step < 1 ? Math.min(2, String(step).split(".")[1]?.length ?? 1) : 0;
-    return value.toLocaleString(language, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+    return formatNumber(value, language, digits, digits);
 }
 /**
  * Sélecteur qui retrouve un élément après un redessin, par ses attributs data-*
@@ -2432,13 +2445,10 @@ class LuminaCard extends BaseElement {
             return `<div class="row stacked">${text}<div class="segmented" role="group" aria-label="${esc(row.label)}">${buttons}</div></div>`;
         }
         // Réglage numérique
-        const a = state.attributes;
-        const step = Number(a.step ?? 1);
-        const min = Number(a.min ?? 0);
-        const max = Number(a.max ?? 100);
+        const { min, max, step } = numberRange(state);
         const pending = this._numbers.get(row.entity);
         const value = pending ?? Number(state.state);
-        const unit = a.unit_of_measurement;
+        const unit = state.attributes.unit_of_measurement;
         // Durée lisible en gros, valeur brute en infobulle
         const duration = formatDuration(value, unit, t);
         const raw = `${formatValue(value, step, language)}${unit ? ` ${unit}` : ""}`;
@@ -2528,8 +2538,7 @@ class LuminaCard extends BaseElement {
         if (!(await this._call("switch", "turn_off", { entity_id: entityId })))
             return;
         const t = this._t;
-        const message = t(pane.kind === "lights" ? "note_lights_paused" : pane.kind === "fans" ? "note_fans_paused" : "note_climate_paused");
-        this._notify(message, {
+        this._notify(t(PAUSED_NOTE[pane.kind]), {
             text: t("undo"),
             action: () => void this._call("switch", "turn_on", { entity_id: entityId }),
         });
@@ -2638,12 +2647,9 @@ class LuminaCard extends BaseElement {
         const state = this._state(entityId);
         if (!state)
             return;
-        const a = state.attributes;
-        const step = Number(a.step ?? 1);
-        const min = Number(a.min ?? 0);
-        const max = Number(a.max ?? 100);
+        const { min, max, step } = numberRange(state);
         const current = this._numbers.get(entityId) ?? Number(state.state);
-        const unit = a.unit_of_measurement;
+        const unit = state.attributes.unit_of_measurement;
         const increment = unit === "s" || unit === "min" ? durationStep(current, step, min, max, unit) : smartStep(current, step, min, max);
         // Arrondi au multiple de l'incrément, pour rester sur des valeurs rondes
         let next = direction > 0

@@ -300,6 +300,13 @@ export interface Pending {
   climate?: number;
 }
 
+/** Note d'un groupe dont l'automatisme est en pause. */
+export const PAUSED_NOTE: Record<PaneKind, StringKey> = {
+  lights: "note_lights_paused",
+  fans: "note_fans_paused",
+  climate: "note_climate_paused",
+};
+
 /** États d'une clim qui ne la comptent pas comme allumée. */
 const CLIMATE_OFF = new Set(["off", "unavailable", "unknown"]);
 
@@ -342,8 +349,14 @@ export function formatClock(date: Date, language: string): string {
   return date.toLocaleTimeString(language, { hour: "2-digit", minute: "2-digit" });
 }
 
-function formatNumber(value: number, language: string, digits = 0): string {
-  return value.toLocaleString(language, { maximumFractionDigits: digits, minimumFractionDigits: 0 });
+/** Nombre dans la langue de l'interface, avec au plus `digits` décimales (et au moins `minDigits`). */
+export function formatNumber(value: number, language: string, digits = 0, minDigits = 0): string {
+  return value.toLocaleString(language, { maximumFractionDigits: digits, minimumFractionDigits: minDigits });
+}
+
+/** Moyenne, null pour une liste vide. */
+function average(values: number[]): number | null {
+  return values.length ? values.reduce((x, y) => x + y, 0) / values.length : null;
 }
 
 export function languageOf(hass: Hass): string {
@@ -684,9 +697,7 @@ function secondaryNotes(ctx: ViewContext, groups: GroupState[], line: NowLine): 
   }
   // La phrase « tout est en pause » le dit déjà
   if (line.action?.kind !== "enable") {
-    if (paused("lights")) notes.push(t("note_lights_paused"));
-    if (paused("fans")) notes.push(t("note_fans_paused"));
-    if (paused("climate")) notes.push(t("note_climate_paused"));
+    for (const g of groups) if (g.auto === "paused") notes.push(t(PAUSED_NOTE[g.kind]));
   }
   const applied = has("climate") && !occupied ? a.climate_vacant_applied : null;
   if (applied === "off") notes.push(t("note_climate_off"));
@@ -816,7 +827,7 @@ function lightsPane(ctx: ViewContext, group: GroupState, manualHint: string, pen
   const onStates = states.filter((s) => s?.state === "on");
   const levels = onStates.map(lightLevel).filter((v): v is number => v !== null);
   const dimmable = states.some(lightDimmable);
-  let level = dimmable ? (levels.length ? Math.round(levels.reduce((x, y) => x + y, 0) / levels.length) : 0) : null;
+  let level = dimmable ? Math.round(average(levels) ?? 0) : null;
   let on = onStates.length > 0;
   if (pending !== undefined) {
     level = dimmable ? pending : level;
@@ -831,9 +842,8 @@ function lightsPane(ctx: ViewContext, group: GroupState, manualHint: string, pen
   const kelvins = onStates
     .filter((s) => s?.attributes.color_mode === "color_temp" && typeof s.attributes.color_temp_kelvin === "number")
     .map((s) => s.attributes.color_temp_kelvin as number);
-  const detail = kelvins.length
-    ? `${formatNumber(Math.round(kelvins.reduce((x, y) => x + y, 0) / kelvins.length / 100) * 100, language)} K`
-    : undefined;
+  const kelvin = average(kelvins);
+  const detail = kelvin !== null ? `${formatNumber(Math.round(kelvin / 100) * 100, language)} K` : undefined;
 
   let hint: string;
   if (auto === "paused") hint = t("hint_paused");
@@ -892,7 +902,7 @@ function fansPane(ctx: ViewContext, group: GroupState, manualHint: string, pendi
     .map((s) => (typeof s?.attributes.percentage === "number" ? s.attributes.percentage : null))
     .filter((v): v is number => v !== null);
   const adjustable = states.some((s) => s?.entity_id.startsWith("fan.") && "percentage" in (s.attributes ?? {}));
-  let level = adjustable ? (speeds.length ? Math.round(speeds.reduce((x, y) => x + y, 0) / speeds.length) : 0) : null;
+  let level = adjustable ? Math.round(average(speeds) ?? 0) : null;
   let on = onStates.length > 0;
   if (pending !== undefined) {
     level = adjustable ? pending : level;
@@ -1062,6 +1072,12 @@ function ambient(ctx: ViewContext): AmbientItem[] {
 }
 
 // --- Réglages ------------------------------------------------------------------
+
+/** Bornes et pas d'un réglage numérique, avec les valeurs par défaut de Home Assistant. */
+export function numberRange(state: HassEntity): Omit<Setpoint, "value"> {
+  const a = state.attributes;
+  return { min: Number(a.min ?? 0), max: Number(a.max ?? 100), step: Number(a.step ?? 1) };
+}
 
 export type SettingKind = "number" | "time" | "select" | "switch";
 

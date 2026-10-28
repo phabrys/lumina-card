@@ -8,8 +8,11 @@ import { ICONS, type IconName } from "./icons.js";
 import {
   buildView,
   formatDuration,
+  formatNumber,
   isClimateOn,
   languageOf,
+  numberRange,
+  PAUSED_NOTE,
   settingTabs,
   translator,
   type CardConfig,
@@ -73,7 +76,7 @@ export function snap(value: number, step: number): number {
 
 function formatValue(value: number, step: number, language: string): string {
   const digits = step < 1 ? Math.min(2, String(step).split(".")[1]?.length ?? 1) : 0;
-  return value.toLocaleString(language, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+  return formatNumber(value, language, digits, digits);
 }
 
 /**
@@ -504,13 +507,10 @@ export class LuminaCard extends BaseElement {
     }
 
     // Réglage numérique
-    const a = state.attributes;
-    const step = Number(a.step ?? 1);
-    const min = Number(a.min ?? 0);
-    const max = Number(a.max ?? 100);
+    const { min, max, step } = numberRange(state);
     const pending = this._numbers.get(row.entity);
     const value = pending ?? Number(state.state);
-    const unit: string | undefined = a.unit_of_measurement;
+    const unit = state.attributes.unit_of_measurement;
     // Durée lisible en gros, valeur brute en infobulle
     const duration = formatDuration(value, unit, t);
     const raw = `${formatValue(value, step, language)}${unit ? ` ${unit}` : ""}`;
@@ -599,10 +599,7 @@ export class LuminaCard extends BaseElement {
     const entityId = pane.autoEntity!;
     if (!(await this._call("switch", "turn_off", { entity_id: entityId }))) return;
     const t = this._t;
-    const message = t(
-      pane.kind === "lights" ? "note_lights_paused" : pane.kind === "fans" ? "note_fans_paused" : "note_climate_paused",
-    );
-    this._notify(message, {
+    this._notify(t(PAUSED_NOTE[pane.kind]), {
       text: t("undo"),
       action: () => void this._call("switch", "turn_on", { entity_id: entityId }),
     });
@@ -705,12 +702,9 @@ export class LuminaCard extends BaseElement {
   private _step(entityId: string, direction: number): void {
     const state = this._state(entityId);
     if (!state) return;
-    const a = state.attributes;
-    const step = Number(a.step ?? 1);
-    const min = Number(a.min ?? 0);
-    const max = Number(a.max ?? 100);
+    const { min, max, step } = numberRange(state);
     const current = this._numbers.get(entityId) ?? Number(state.state);
-    const unit = a.unit_of_measurement;
+    const unit = state.attributes.unit_of_measurement;
     const increment =
       unit === "s" || unit === "min" ? durationStep(current, step, min, max, unit) : smartStep(current, step, min, max);
     // Arrondi au multiple de l'incrément, pour rester sur des valeurs rondes
