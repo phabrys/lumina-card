@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.4 — 2026-10-28
+
+- Réglages, heures (début de nuit, fin de nuit, soirée…) : l'heure tapée au clavier est envoyée quand tu quittes le champ ou appuies sur Entrée. Sous Chrome, Edge et Android, le premier chiffre partait aussitôt (taper 23:30 réglait 02:00) et le champ perdait le focus.
+- Réglages : pendant la saisie d'une heure, changer d'onglet, revenir ou utiliser − / + fonctionne du premier coup, y compris sous Safari et sur iPhone ; l'heure tapée est envoyée au passage.
+
 ## 0.10.3 — 2026-10-28
 
 - Réglages : un réglage pas encore connu de Lumina, juste après un redémarrage, affiche « — » au lieu de « NaN h ».
