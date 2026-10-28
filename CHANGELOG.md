@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.2 — 2026-10-28
+
+- Curseur de la lumière ou du ventilateur réglé au clavier : la valeur s'affiche à chaque appui et n'est envoyée qu'une fois que tu arrêtes d'appuyer, comme avec − / +. Une flèche maintenue n'envoie plus des dizaines de commandes.
+- Pièce sans capteur de luminosité : l'indication de la lumière (« S'allume après le coucher du soleil ») change dès que le soleil se couche, sans attendre qu'un autre état de la pièce change.
+
 ## 0.10.1 — 2026-10-27
 
 - Aucun changement visible : code vérifié par ESLint (typescript-eslint) et mis en forme par Prettier, attributs de Lumina typés, calcul de l'affichage découpé en fonctions plus courtes.
