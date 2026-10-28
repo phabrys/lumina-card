@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.3 — 2026-10-28
+
+- Réglages : un réglage pas encore connu de Lumina, juste après un redémarrage, affiche « — » au lieu de « NaN h ».
+- Configuration YAML : une erreur (par exemple `hide_panes: lights` au lieu d'une liste) affiche un message clair dans la carte d'erreur de Home Assistant, au lieu d'une carte vide ou incomplète.
+- Le nom de la carte suit aussitôt un renommage de la zone ou de l'appareil, sans attendre un changement d'état dans la pièce.
+
 ## 0.10.2 — 2026-10-28
 
 - Curseur de la lumière ou du ventilateur réglé au clavier : la valeur s'affiche à chaque appui et n'est envoyée qu'une fois que tu arrêtes d'appuyer, comme avec − / +. Une flèche maintenue n'envoie plus des dizaines de commandes.
