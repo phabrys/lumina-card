@@ -212,6 +212,13 @@ export function resolveRoom(hass: Hass, deviceId: string | undefined): RoomEntit
   return room;
 }
 
+/** Entités de la pièce nommées par le capteur d'état : appareils, détecteurs, capteurs. */
+export function roomStateEntities(a: RoomStateAttributes): string[] {
+  const lists = [a.lights, a.fans, a.climates, a.presence_sensors, a.presence_hold_entities];
+  const singles = [a.illuminance_sensor, a.temperature_sensor, a.humidity_sensor, a.sleep_entity];
+  return [...lists.flatMap((ids) => ids ?? []), ...singles.filter((id): id is string => !!id)];
+}
+
 export function roomName(hass: Hass, config: CardConfig, room: RoomEntities): string {
   if (config.name) return config.name;
   const deviceId = deviceOf(hass, config);
@@ -305,6 +312,23 @@ export const PAUSED_NOTE: Record<PaneKind, StringKey> = {
   lights: "note_lights_paused",
   fans: "note_fans_paused",
   climate: "note_climate_paused",
+};
+
+/** Échéance en pièce vide de l'action sur la clim ; à défaut, la consigne relevée (ou abaissée). */
+const CLIMATE_VACANT_IN: Partial<Record<string, StringKey>> = { off: "climate_off_in", eco: "climate_eco_in" };
+const CLIMATE_VACANT_AFTER: Partial<Record<string, StringKey>> = {
+  off: "hint_climate_off_after",
+  eco: "hint_climate_eco_after",
+};
+
+/** Mode de la clim affiché dans son panneau. */
+const HVAC_MODES: Partial<Record<string, StringKey>> = {
+  cool: "hvac_cool",
+  heat: "hvac_heat",
+  heat_cool: "hvac_auto",
+  auto: "hvac_auto",
+  dry: "hvac_dry",
+  fan_only: "hvac_fan_only",
 };
 
 /** États d'une clim qui ne la comptent pas comme allumée. */
@@ -552,14 +576,7 @@ function vacantSchedule(ctx: ViewContext): Scheduled[] {
   const action = a.climate_vacant_action;
   if (climateAt && climateOn && action && action !== "none") {
     const heating = climateIds.some((id) => hass.states[id]?.state === "heat");
-    const key: StringKey =
-      action === "off"
-        ? "climate_off_in"
-        : action === "eco"
-          ? "climate_eco_in"
-          : heating
-            ? "climate_setback_heat_in"
-            : "climate_setback_in";
+    const key = CLIMATE_VACANT_IN[action] ?? (heating ? "climate_setback_heat_in" : "climate_setback_in");
     scheduled.push({ at: climateAt, text: (d) => t(key, { t: d }) });
   }
   return scheduled.sort((x, y) => x.at.getTime() - y.at.getTime());
@@ -820,8 +837,7 @@ function lightDimmable(state: HassEntity | undefined): boolean {
 }
 
 function lightsPane(ctx: ViewContext, group: GroupState, manualHint: string, pending: number | undefined): Pane {
-  const { hass, room, a, t, language, sleeping } = ctx;
-  const night = ctx.nightRules;
+  const { hass, room, t, language } = ctx;
   const { ids, auto } = group;
   const states = ids.map((id) => hass.states[id]);
   const onStates = states.filter((s) => s?.state === "on");
@@ -845,33 +861,6 @@ function lightsPane(ctx: ViewContext, group: GroupState, manualHint: string, pen
   const kelvin = average(kelvins);
   const detail = kelvin !== null ? `${formatNumber(Math.round(kelvin / 100) * 100, language)} K` : undefined;
 
-  let hint: string;
-  if (auto === "paused") hint = t("hint_paused");
-  else if (auto === "manual") hint = manualHint;
-  else if (on) {
-    const delay = num(hass, night ? (room.night_light_off_delay ?? room.light_off_delay) : room.light_off_delay);
-    hint = delay !== null ? t("hint_lights_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
-  } else if (a.lights_held) {
-    const held = parseDate(a.wake_hold_until);
-    hint = held ? t("hint_lights_held_until", { h: formatClock(held, language) }) : t("hint_lights_held");
-  } else if (sleeping) {
-    const nightLight = num(hass, room.sleep_brightness);
-    hint = nightLight
-      ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) })
-      : t("hint_no_sleep_light");
-  } else if (a.daylight_locked) hint = t(a.illuminance_sensor ? "hint_daylight" : "hint_sun_up");
-  else if (night && num(hass, room.night_brightness) === 0) hint = t("hint_no_night");
-  else {
-    const threshold = num(hass, room.lux_threshold);
-    // Sans capteur de luminosité, Lumina 0.14 suit le soleil.
-    hint =
-      a.illuminance_sensor && threshold !== null
-        ? t("hint_lights_below", { v: formatNumber(threshold, language) })
-        : !a.illuminance_sensor && hass.states["sun.sun"]?.state === "above_horizon"
-          ? sunsetHint(num(hass, room.sunset_advance), t)
-          : t("hint_lights_auto");
-  }
-
   return {
     kind: "lights",
     title: t("lights"),
@@ -881,10 +870,42 @@ function lightsPane(ctx: ViewContext, group: GroupState, manualHint: string, pen
     step: 1,
     value,
     detail,
-    hint,
+    hint: lightsHint(ctx, auto, manualHint, on),
     auto,
     autoEntity: room.auto_lights,
   };
+}
+
+/** Aide du panneau Lumière : ce que Lumina fera ensuite. */
+function lightsHint(ctx: ViewContext, auto: AutoState, manualHint: string, on: boolean): string {
+  const { hass, room, a, t, language, sleeping } = ctx;
+  const night = ctx.nightRules;
+  if (auto === "paused") return t("hint_paused");
+  if (auto === "manual") return manualHint;
+  if (on) {
+    const delay = num(hass, night ? (room.night_light_off_delay ?? room.light_off_delay) : room.light_off_delay);
+    return delay !== null ? t("hint_lights_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
+  }
+  if (a.lights_held) {
+    const held = parseDate(a.wake_hold_until);
+    return held ? t("hint_lights_held_until", { h: formatClock(held, language) }) : t("hint_lights_held");
+  }
+  if (sleeping) {
+    const nightLight = num(hass, room.sleep_brightness);
+    return nightLight
+      ? t("hint_sleep_night_light", { v: formatNumber(nightLight, language) })
+      : t("hint_no_sleep_light");
+  }
+  if (a.daylight_locked) return t(a.illuminance_sensor ? "hint_daylight" : "hint_sun_up");
+  if (night && num(hass, room.night_brightness) === 0) return t("hint_no_night");
+  // Sans capteur de luminosité, Lumina 0.14 suit le soleil.
+  if (!a.illuminance_sensor) {
+    return hass.states["sun.sun"]?.state === "above_horizon"
+      ? sunsetHint(num(hass, room.sunset_advance), t)
+      : t("hint_lights_auto");
+  }
+  const threshold = num(hass, room.lux_threshold);
+  return threshold !== null ? t("hint_lights_below", { v: formatNumber(threshold, language) }) : t("hint_lights_auto");
 }
 
 /** Sans capteur de luminosité, en journée : allumage avant le coucher du soleil (Lumina 0.15). */
@@ -893,8 +914,7 @@ function sunsetHint(advance: number | null, t: Translate): string {
 }
 
 function fansPane(ctx: ViewContext, group: GroupState, manualHint: string, pending: number | undefined): Pane {
-  const { hass, room, a, t, language, presumed } = ctx;
-  const night = ctx.nightRules;
+  const { hass, room, t } = ctx;
   const { ids, auto } = group;
   const states = ids.map((id) => hass.states[id]);
   const onStates = states.filter((s) => s?.state === "on");
@@ -911,35 +931,6 @@ function fansPane(ctx: ViewContext, group: GroupState, manualHint: string, pendi
 
   const value = on ? (level !== null && level > 0 ? `${level} %` : t("fan_on")) : t("fan_off");
 
-  let hint: string;
-  const threshold = num(
-    hass,
-    night ? (room.night_temperature_threshold ?? room.temperature_threshold) : room.temperature_threshold,
-  );
-  if (auto === "paused") hint = t("hint_paused_fans");
-  else if (auto === "manual") hint = manualHint;
-  else if (a.climate_running && a.fans_with_climate === "mix") {
-    const speed = num(hass, room.fan_mix_speed);
-    hint = speed !== null ? t("hint_fans_mix", { v: formatNumber(speed, language) }) : t("hint_fans_mix_plain");
-  } else if (a.climate_running && a.fans_with_climate === "off") hint = t("hint_fans_climate_off");
-  else if (on) {
-    if (a.temperature_sensor && threshold !== null) {
-      // Lumina arrête les ventilateurs 1 °C sous le seuil (hystérésis)
-      hint = t(a.humidity_sensor ? "hint_fans_stop_below_apparent" : "hint_fans_stop_below", {
-        v: formatNumber(threshold - 1, language, 1),
-      });
-    } else if (presumed) hint = t("hint_fans_until_wake");
-    else {
-      const delay = num(hass, night ? (room.night_fan_off_delay ?? room.fan_off_delay) : room.fan_off_delay);
-      hint = delay !== null ? t("hint_fans_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
-    }
-  } else if (a.temperature_sensor) {
-    hint =
-      threshold === null
-        ? t("hint_fans_presence")
-        : t(a.humidity_sensor ? "hint_fans_at_apparent" : "hint_fans_at", { v: formatNumber(threshold, language, 1) });
-  } else hint = t("hint_fans_presence");
-
   // Un tour toutes les 2,4 s à basse vitesse, 0,45 s à pleine vitesse
   const spin = on ? 2.4 - ((level ?? 60) / 100) * 1.95 : undefined;
 
@@ -952,11 +943,44 @@ function fansPane(ctx: ViewContext, group: GroupState, manualHint: string, pendi
     level,
     step,
     value,
-    hint,
+    hint: fansHint(ctx, auto, manualHint, on),
     auto,
     autoEntity: room.auto_fans,
     spin,
   };
+}
+
+/** Aide du panneau Ventilateur : quand il démarre ou s'arrête. */
+function fansHint(ctx: ViewContext, auto: AutoState, manualHint: string, on: boolean): string {
+  const { hass, room, a, t, language, presumed } = ctx;
+  const night = ctx.nightRules;
+  if (auto === "paused") return t("hint_paused_fans");
+  if (auto === "manual") return manualHint;
+  if (a.climate_running && a.fans_with_climate === "mix") {
+    const speed = num(hass, room.fan_mix_speed);
+    return speed !== null ? t("hint_fans_mix", { v: formatNumber(speed, language) }) : t("hint_fans_mix_plain");
+  }
+  if (a.climate_running && a.fans_with_climate === "off") return t("hint_fans_climate_off");
+  const threshold = num(
+    hass,
+    night ? (room.night_temperature_threshold ?? room.temperature_threshold) : room.temperature_threshold,
+  );
+  const measured = !!a.temperature_sensor && threshold !== null;
+  if (on) {
+    // Lumina arrête les ventilateurs 1 °C sous le seuil (hystérésis)
+    if (measured) {
+      return t(a.humidity_sensor ? "hint_fans_stop_below_apparent" : "hint_fans_stop_below", {
+        v: formatNumber(threshold - 1, language, 1),
+      });
+    }
+    if (presumed) return t("hint_fans_until_wake");
+    const delay = num(hass, night ? (room.night_fan_off_delay ?? room.fan_off_delay) : room.fan_off_delay);
+    return delay !== null ? t("hint_fans_off_after", { d: formatDelay(delay, t) }) : t("hint_auto_on");
+  }
+  if (measured) {
+    return t(a.humidity_sensor ? "hint_fans_at_apparent" : "hint_fans_at", { v: formatNumber(threshold, language, 1) });
+  }
+  return t("hint_fans_presence");
 }
 
 function climatePane(ctx: ViewContext, group: GroupState, manualHint: string, pending: number | undefined): Pane {
@@ -971,15 +995,7 @@ function climatePane(ctx: ViewContext, group: GroupState, manualHint: string, pe
 
   let value = t("off");
   if (on) {
-    const hvac: Record<string, StringKey> = {
-      cool: "hvac_cool",
-      heat: "hvac_heat",
-      heat_cool: "hvac_auto",
-      auto: "hvac_auto",
-      dry: "hvac_dry",
-      fan_only: "hvac_fan_only",
-    };
-    value = main.attributes.preset_mode === "eco" ? t("preset_eco") : hvac[mode] ? t(hvac[mode]) : t("on");
+    value = main.attributes.preset_mode === "eco" ? t("preset_eco") : t(HVAC_MODES[mode] ?? "on");
     if (ids.length > 1) value += ` · ${t("of_total", { n: active.length, total: ids.length })}`;
   }
 
@@ -1014,15 +1030,7 @@ function climatePane(ctx: ViewContext, group: GroupState, manualHint: string, pe
   else if (presumed) hint = t("hint_climate_untouched_sleep");
   else if (!action || action === "none") hint = t(night ? "hint_climate_untouched_night" : "hint_climate_untouched");
   else if (delay === null) hint = t("hint_auto_on");
-  else {
-    const key: StringKey =
-      action === "off"
-        ? "hint_climate_off_after"
-        : action === "eco"
-          ? "hint_climate_eco_after"
-          : "hint_climate_setback_after";
-    hint = t(key, { d: formatDelay(delay, t) });
-  }
+  else hint = t(CLIMATE_VACANT_AFTER[action] ?? "hint_climate_setback_after", { d: formatDelay(delay, t) });
 
   return {
     kind: "climate",

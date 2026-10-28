@@ -13,6 +13,7 @@ import {
   languageOf,
   numberRange,
   PAUSED_NOTE,
+  roomStateEntities,
   settingTabs,
   translator,
   type CardConfig,
@@ -21,6 +22,7 @@ import {
   type Pane,
   type PaneKind,
   type Pending,
+  type RoomStateAttributes,
   type RoomView,
   type SettingRow,
   type SettingTab,
@@ -95,6 +97,14 @@ function focusSelector(element: Element | null): string | undefined {
 const FOCUS_FALLBACK: Record<string, string> = {
   settings: '[data-action="close"]',
   close: '[data-action="settings"]',
+};
+
+/** Onglets des réglages : position de l'onglet atteint par chaque touche. */
+const TAB_KEYS: Partial<Record<string, (index: number, count: number) => number>> = {
+  ArrowRight: (index, count) => (index + 1) % count,
+  ArrowLeft: (index, count) => (index - 1 + count) % count,
+  Home: () => 0,
+  End: (_, count) => count - 1,
 };
 
 const PANE_ICONS: Record<PaneKind, [IconName, IconName]> = {
@@ -216,15 +226,12 @@ export class LuminaCard extends BaseElement {
 
   /** États dont dépend l'affichage : on ne redessine que s'ils changent. */
   private _computeSignature(hass: Hass, view: RoomView): unknown[] {
-    const ids = new Set<string>(Object.values(view.entities).filter((e): e is string => !!e));
     const roomState = view.entities.room_state ? hass.states[view.entities.room_state] : undefined;
-    const a = roomState?.attributes ?? {};
-    for (const key of ["lights", "fans", "climates", "presence_sensors", "presence_hold_entities"]) {
-      for (const id of (a[key] as string[] | undefined) ?? []) ids.add(id);
-    }
-    for (const key of ["illuminance_sensor", "temperature_sensor", "humidity_sensor", "sleep_entity"]) {
-      if (a[key]) ids.add(a[key] as string);
-    }
+    const a: RoomStateAttributes = roomState?.attributes ?? {};
+    const ids = new Set<string>([
+      ...Object.values(view.entities).filter((e): e is string => !!e),
+      ...roomStateEntities(a),
+    ]);
     // Sans capteur de luminosité, l'aide des lumières suit le soleil : seul son
     // état compte, ses attributs (élévation…) changent toutes les quelques minutes.
     const sun = a.illuminance_sensor ? undefined : hass.states["sun.sun"]?.state;
@@ -831,18 +838,9 @@ export class LuminaCard extends BaseElement {
   /** Onglets des réglages : flèches, Origine et Fin passent d'un onglet à l'autre. */
   private _onTabKey(event: KeyboardEvent, tab: HTMLElement): void {
     const tabs = [...this._root.querySelectorAll<HTMLElement>('[role="tab"]')];
-    const index = tabs.indexOf(tab);
-    const next =
-      event.key === "ArrowRight"
-        ? tabs[(index + 1) % tabs.length]
-        : event.key === "ArrowLeft"
-          ? tabs[(index - 1 + tabs.length) % tabs.length]
-          : event.key === "Home"
-            ? tabs[0]
-            : event.key === "End"
-              ? tabs[tabs.length - 1]
-              : undefined;
-    if (!next) return;
+    const move = TAB_KEYS[event.key];
+    if (!move) return;
+    const next = tabs[move(tabs.indexOf(tab), tabs.length)];
     event.preventDefault();
     this._tab = next.dataset.tab as SettingTab["id"];
     this._draw();
