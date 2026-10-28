@@ -250,3 +250,138 @@ test("compact : la consigne de la clim se règle depuis la pastille", async () =
     { domain: "climate", service: "set_temperature", data: { entity_id: ["climate.chambre"], temperature: 23 } },
   ]);
 });
+
+test("valeur en attente : gardée le temps de la réponse, puis l'état réel reprend la main", async () => {
+  const { root } = mount();
+  const valuetext = () => $(root, '.slider[data-kind="lights"]').getAttribute("aria-valuetext");
+  $(root, '.slider[data-kind="lights"]').focus();
+  root.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, composed: true }));
+  mock.timers.tick(700);
+  await flush();
+  assert.equal(valuetext(), "75 %");
+  // Home Assistant n'a pas renvoyé de nouvel état : la lampe est toujours à 70 %
+  mock.timers.tick(2499);
+  assert.equal(valuetext(), "75 %");
+  mock.timers.tick(1);
+  assert.equal(valuetext(), "70 %");
+});
+
+test("réglage numérique : la valeur envoyée s'efface si Home Assistant ne la renvoie pas", async () => {
+  const { root } = mount();
+  openSettings(root, "lights");
+  const value = () => $(root, `.stepper-value[data-entity="${ENTITIES.light_off_delay}"]`);
+  // La durée est écrite avec des espaces insécables
+  const text = () =>
+    value()
+      .textContent.trim()
+      .replace(/\u00a0/g, " ");
+  $(root, `[data-action="step"][data-dir="1"][data-entity="${ENTITIES.light_off_delay}"]`).click();
+  assert.equal(text(), "2 min 30 s");
+  assert.ok(value().classList.contains("pending"));
+  mock.timers.tick(700);
+  await flush();
+  mock.timers.tick(1500);
+  assert.equal(text(), "2 min");
+  assert.ok(!value().classList.contains("pending"));
+});
+
+test("curseur glissé : pas de redessin pendant le geste, un seul envoi au lâcher", async () => {
+  const { root, hass, calls } = mount();
+  const slider = $(root, '.slider[data-kind="lights"]');
+  slider.getBoundingClientRect = () => ({ left: 0, width: 200, top: 0, height: 20, right: 200, bottom: 20 });
+  const pointer = (type, clientX) =>
+    slider.dispatchEvent(new window.PointerEvent(type, { clientX, button: 0, pointerId: 1, bubbles: true }));
+  pointer("pointerdown", 100);
+  assert.equal(slider.getAttribute("aria-valuetext"), "50 %");
+  // Un état qui change pendant le geste ne recrée pas le curseur
+  const light = hass.states["light.chambre"];
+  card.hass = { ...hass, states: { ...hass.states, "light.chambre": { ...light } } };
+  assert.ok($(root, '.slider[data-kind="lights"]') === slider, "curseur recréé pendant le glisser");
+  pointer("pointermove", 150);
+  assert.equal($(root, ".pane-lights .value").textContent, "75 %");
+  assert.deepEqual(calls, []);
+  pointer("pointerup", 180);
+  await flush();
+  assert.equal($(root, '.slider[data-kind="lights"]').getAttribute("aria-valuetext"), "90 %");
+  assert.deepEqual(calls, [
+    { domain: "light", service: "turn_on", data: { entity_id: ["light.chambre"], brightness_pct: 90 } },
+  ]);
+});
+
+test("gestes de la carte : chaque bouton appelle le bon service", async () => {
+  const cases = [
+    {
+      name: "icône : éteint le groupe",
+      selector: '[data-action="toggle"][data-kind="lights"]',
+      call: { domain: "homeassistant", service: "turn_off", data: { entity_id: ["light.chambre"] } },
+    },
+    {
+      name: "pastille Jour : force la nuit",
+      selector: '[data-action="period"]',
+      call: { domain: "switch", service: "turn_on", data: { entity_id: ENTITIES.forced_night } },
+    },
+    {
+      name: "bouton Sommeil : endort la pièce",
+      options: { sleep: true },
+      selector: '[data-action="sleep"]',
+      call: { domain: "switch", service: "turn_on", data: { entity_id: ENTITIES.sleeping } },
+    },
+    {
+      name: "pastille Manuel : rend la main",
+      options: { room: { lights_override_until: inSeconds(3600) } },
+      selector: '.pill-manual[data-kind="lights"]',
+      call: { domain: "button", service: "press", data: { entity_id: ENTITIES.resume } },
+    },
+    {
+      name: "tout en pause : Réactiver rallume les automatismes",
+      options: {
+        states: {
+          [ENTITIES.auto_lights]: { state: "off", attributes: {} },
+          [ENTITIES.auto_fans]: { state: "off", attributes: {} },
+        },
+      },
+      selector: '.now-action[data-action="enable"]',
+      call: {
+        domain: "switch",
+        service: "turn_on",
+        data: { entity_id: [ENTITIES.auto_lights, ENTITIES.auto_fans] },
+      },
+    },
+  ];
+  for (const { name, options, selector, call } of cases) {
+    const { root, calls } = mount(options);
+    const button = $(root, selector);
+    assert.ok(button, `${name} : bouton absent`);
+    button.click();
+    await flush();
+    assert.deepEqual(calls, [call], name);
+    card.remove();
+  }
+});
+
+test("gestes des réglages : interrupteur, liste de choix et heure", async () => {
+  const { root, calls } = mount();
+  openSettings(root, "lights");
+  $(root, `[data-action="switch"][data-entity="${ENTITIES.auto_lights}"]`).click();
+  $(root, `[data-action="select"][data-entity="${ENTITIES.lights_mode}"][data-option="any"]`).click();
+  $(root, '[data-tab="night"]').click();
+  const time = $(root, `input[data-entity="${ENTITIES.night_start}"]`);
+  time.value = "23:30";
+  time.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await flush();
+  assert.deepEqual(calls, [
+    { domain: "switch", service: "toggle", data: { entity_id: ENTITIES.auto_lights } },
+    { domain: "select", service: "select_option", data: { entity_id: ENTITIES.lights_mode, option: "any" } },
+    { domain: "time", service: "set_value", data: { entity_id: ENTITIES.night_start, time: "23:30:00" } },
+  ]);
+});
+
+test("carte retirée de la page : le compte à rebours s'arrête", () => {
+  const { root, hass } = mount({ room: { occupied: false, lights_off_at: inSeconds(95) } });
+  hass.states[ENTITIES.room_state].state = "vacant";
+  card.hass = { ...hass, states: { ...hass.states } };
+  assert.equal($(root, ".now-text").textContent, "La lumière s'éteint dans 1:35");
+  card.remove();
+  mock.timers.tick(2000);
+  assert.equal($(root, ".now-text").textContent, "La lumière s'éteint dans 1:35");
+});
